@@ -1,0 +1,239 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<!-- Encabezado con Logo Blanco Institucional y Filtros -->
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div class="d-flex align-items-center gap-3">
+            <img src="{% static 'img/logo_blanco.jpg' %}" alt="Logo La Serena" style="height: 58px; border-radius: 8px;">
+            <div>
+                <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">Delegación Compañías</h4>
+                <small class="text-muted"><i class="bi bi-clock-history me-1"></i>Última actualización: Tiempo real · Tope de cumplimiento 120%</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn-muni-outline"><i class="bi bi-funnel me-1"></i>Limpiar filtros</button>
+            <a href="#" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Nueva Actividad / Compromiso</a>
+        </div>
+    </div>
+
+    <!-- Barra de Filtros Rápidos -->
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+            <select class="form-select form-select-sm">
+                <option selected>Trimestre 4 (Oct - Dic 2026)</option>
+                <option>Trimestre 3 (Jul - Sep 2026)</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
+            <select class="form-select form-select-sm">
+                <option selected>Todos los funcionarios</option>
+                <option>Andrea Morales (Gestor Social)</option>
+                <option>Felipe Rojas (Territorial OOCC)</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
+            <select class="form-select form-select-sm">
+                <option selected>Todos los territorios</option>
+                <option>Las Compañías Centro</option>
+                <option>El Olivar / La Varilla</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
+            <input type="text" class="form-control form-control-sm" placeholder="Buscar por código, RUT o vecino...">
+        </div>
+    </div>
+</div>
+
+<!-- Tarjetas KPI Superiores -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3 animate-fade-up delay-1">
+        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
+            <div>
+                <span class="text-muted small fw-semibold">Cumplimiento General</span>
+                <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">78.4%</h2>
+                <small class="text-success fw-semibold"><i class="bi bi-arrow-up-right"></i> Meta al día: 70.0%</small>
+            </div>
+            <div class="kpi-icon-circle">
+                <i class="bi bi-pie-chart-fill"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 animate-fade-up delay-2">
+        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
+            <div>
+                <span class="text-muted small fw-semibold">Actividades Aprobadas</span>
+                <h2 class="fw-extrabold mb-0 mt-1">126</h2>
+                <small class="text-muted">Aprobadas y ponderan</small>
+            </div>
+            <div class="kpi-icon-circle">
+                <i class="bi bi-file-earmark-check-fill"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 animate-fade-up delay-3">
+        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
+            <div>
+                <span class="text-muted small fw-semibold">Pendientes Verificación</span>
+                <h2 class="fw-extrabold mb-0 mt-1 text-warning">18</h2>
+                <small class="text-muted">Con evidencia adjunta</small>
+            </div>
+            <div class="kpi-icon-circle">
+                <i class="bi bi-hourglass-split"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 animate-fade-up delay-4">
+        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
+            <div>
+                <span class="text-muted small fw-semibold">Compromisos Vencidos</span>
+                <h2 class="fw-extrabold mb-0 mt-1 text-danger">7</h2>
+                <small class="text-danger fw-semibold">Requieren atención en Tubo</small>
+            </div>
+            <div class="kpi-icon-circle">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sección Central: Cumplimiento de Metas y Semáforo por Funcionario -->
+<div class="row g-4">
+    <!-- Cumplimiento de Metas -->
+    <div class="col-lg-7 animate-fade-up delay-2">
+        <div class="muni-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-steps me-2" style="color: var(--muni-crimson);"></i>Cumplimiento de Metas Asignadas</h6>
+                <span class="badge bg-light text-dark border">Ponderación Total: 100%</span>
+            </div>
+
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span class="fw-semibold">Meta 1 · Atención social y programas comunitarios (Pond: 40%)</span>
+                    <span class="fw-bold" style="color: var(--muni-crimson);">85% / Esperado: 75%</span>
+                </div>
+                <div class="progress-muni">
+                    <div class="progress-bar-granate" style="width: 85%;"></div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span class="fw-semibold">Meta 2 · Participación ciudadana y JJVV (Pond: 35%)</span>
+                    <span class="fw-bold" style="color: var(--muni-crimson);">72% / Esperado: 75%</span>
+                </div>
+                <div class="progress-muni">
+                    <div class="progress-bar-granate" style="width: 72%;"></div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span class="fw-semibold">Meta 3 · Soluciones de ingresos al Tubo y Cartas (Pond: 25%)</span>
+                    <span class="fw-bold" style="color: var(--muni-crimson);">60% / Esperado: 75%</span>
+                </div>
+                <div class="progress-muni">
+                    <div class="progress-bar-granate" style="width: 60%;"></div>
+                </div>
+            </div>
+
+            <!-- Tabla de Próximos Vencimientos en el Tubo -->
+            <h6 class="fw-bold mb-3 pt-2 border-top"><i class="bi bi-calendar-event me-2" style="color: var(--muni-crimson);"></i>Próximos Compromisos y Cartas en el Tubo</h6>
+            <div class="table-responsive">
+                <table class="table-muni">
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Solicitante / Vecino</th>
+                            <th>Responsable</th>
+                            <th>Compromiso</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-bold">AC-0042</td>
+                            <td>JJVV Las Violetas</td>
+                            <td>Andrea Morales</td>
+                            <td>14 nov 2026</td>
+                            <td><span class="badge-estado estado-proceso">En proceso</span></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">CA-0118</td>
+                            <td>Miguel Araya (Carta)</td>
+                            <td>Felipe Rojas</td>
+                            <td>15 nov 2026</td>
+                            <td><span class="badge-estado estado-pendiente">Pendiente</span></td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">GS-0073</td>
+                            <td>Yesenia Merino</td>
+                            <td>Camila Díaz</td>
+                            <td>16 nov 2026</td>
+                            <td><span class="badge-estado estado-realizado">Realizado</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Semáforo por Funcionario -->
+    <div class="col-lg-5 animate-fade-up delay-3">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3"><i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>Semáforo de Avance por Funcionario</h6>
+            <p class="small text-muted mb-3">Cálculo en base a actividades en estado <strong>Aprobada y pondera</strong> (Tope 120% por meta).</p>
+
+            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
+                    <div>
+                        <div class="fw-bold">Andrea Morales</div>
+                        <small class="text-muted">Gestor Social · 42 ingresos</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fw-extrabold fs-5">92.4%</span>
+                    <span class="semaforo-dot semaforo-verde" title="Sobre el objetivo diario"></span>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
+                    <div>
+                        <div class="fw-bold">Felipe Rojas</div>
+                        <small class="text-muted">Territorial OOCC · 29 ingresos</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fw-extrabold fs-5">74.0%</span>
+                    <span class="semaforo-dot semaforo-amarillo" title="En rango de alerta"></span>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
+                    <div>
+                        <div class="fw-bold">Camila Díaz</div>
+                        <small class="text-muted">Apoyo Administrativo · 15 ingresos</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fw-extrabold fs-5">51.2%</span>
+                    <span class="semaforo-dot semaforo-rojo" title="Bajo el umbral esperado"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

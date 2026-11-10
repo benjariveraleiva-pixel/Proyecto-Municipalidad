@@ -1,0 +1,140 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SGR | Ilustre Municipalidad de La Serena{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Nuestro CSS Institucional Granate y Blanco -->
+    <link rel="stylesheet" href="{% static 'css/municipalidad.css' %}">
+</head>
+<body>
+
+    <!-- ==================== MENÚ LATERAL (SIDEBAR) ==================== -->
+    <aside class="muni-sidebar">
+        <div class="sidebar-brand">
+            <img src="{% static 'img/logo_rojo.jpg' %}" alt="Escudo La Serena">
+            <div class="sidebar-brand-text">
+                <h6>LA SERENA</h6>
+                <span>Ilustre Municipalidad</span>
+            </div>
+        </div>
+
+        <div class="delegacion-selector-box">
+            <small><i class="bi bi-geo-alt-fill me-1"></i>Delegación Activa</small>
+            <strong>Compañías</strong>
+        </div>
+
+        <ul class="sidebar-menu">
+            <li class="sidebar-section-label">Análisis y Control</li>
+            <li>
+                <a href="/" class="sidebar-link active">
+                    <i class="bi bi-grid-1x2-fill"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-bullseye"></i>
+                    <span>Asignación de Metas</span>
+                </a>
+            </li>
+
+            <li class="sidebar-section-label">Operación y Flujos</li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-list-check"></i>
+                    <span>Actividades</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-kanban-fill"></i>
+                    <span>Tubo de Compromisos</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-envelope-paper-fill"></i>
+                    <span>Tubo de Cartas</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-people-fill"></i>
+                    <span>Gestiones Sociales</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-flag-fill"></i>
+                    <span>Hitos Programados</span>
+                </a>
+            </li>
+
+            <li class="sidebar-section-label">Revisión y Respaldo</li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-patch-check-fill"></i>
+                    <span>Verificación y Evidencias</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-bar-chart-line-fill"></i>
+                    <span>Reportes y Bitácora</span>
+                </a>
+            </li>
+
+            <li class="sidebar-section-label">Mantenedores (CRUD)</li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-person-vcard-fill"></i>
+                    <span>Vecinos y Juntas (JJVV)</span>
+                </a>
+            </li>
+            <li>
+                <a href="#" class="sidebar-link">
+                    <i class="bi bi-gear-fill"></i>
+                    <span>Administración SGR</span>
+                </a>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- ==================== BARRA SUPERIOR (TOPBAR) ==================== -->
+    <header class="muni-topbar">
+        <div class="topbar-title">
+            <span>Sistema de Gestión de Resultados (SGR)</span>
+            <span class="topbar-badge">Trimestre 4 · 2026</span>
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-sm text-white position-relative">
+                <i class="bi bi-bell-fill fs-5"></i>
+                <span class="position-absolute top-0 start-100 translate-middle p-1 bg-warning border border-light rounded-circle"></span>
+            </button>
+            <div class="d-flex align-items-center gap-2 border-start ps-3 border-light border-opacity-25">
+                <i class="bi bi-person-circle fs-4"></i>
+                <div class="lh-1">
+                    <div class="fw-bold" style="font-size: 0.85rem;">Usuario Municipal</div>
+                    <small class="text-white-50" style="font-size: 0.72rem;">Delegación Compañías</small>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ==================== CONTENIDO DINÁMICO ==================== -->
+    <main class="muni-main">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

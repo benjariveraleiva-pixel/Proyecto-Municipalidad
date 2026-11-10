@@ -1,0 +1,392 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --muni-crimson: #A51C30;       /* Rojo institucional principal */
+    --muni-granate: #6B0F1A;       /* Granate profundo para sidebar y degradados */
+    --muni-granate-dark: #4A0810;  /* Granate oscuro para bordes/activos */
+    --muni-gold: #D4AF37;          /* Detalle dorado institucional */
+    --bg-light: #F4F6F9;           /* Gris perla limpio para el fondo */
+    --text-dark: #1E293B;
+    --text-muted: #64748B;
+    --sem-verde: #10B981;
+    --sem-amarillo: #F59E0B;
+    --sem-rojo: #EF4444;
+    --sidebar-width: 270px;
+    --topbar-height: 70px;
+    --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-dark);
+    overflow-x: hidden;
+}
+
+/* ==================== ANIMACIONES KEYFRAMES ==================== */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulseSemaforo {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.animate-fade-up {
+    animation: fadeInUp 0.45s ease-out forwards;
+}
+
+.delay-1 { animation-delay: 0.08s; }
+.delay-2 { animation-delay: 0.16s; }
+.delay-3 { animation-delay: 0.24s; }
+.delay-4 { animation-delay: 0.32s; }
+
+/* ==================== TOPBAR (CABECERA SUPERIOR) ==================== */
+.muni-topbar {
+    position: fixed;
+    top: 0;
+    left: var(--sidebar-width);
+    right: 0;
+    height: var(--topbar-height);
+    background: linear-gradient(90deg, var(--muni-crimson) 0%, var(--muni-granate) 100%);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    z-index: 1020;
+    box-shadow: 0 4px 15px rgba(107, 15, 26, 0.2);
+    transition: var(--transition-smooth);
+}
+
+.topbar-title {
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-badge {
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 4px 12px;
+    border-radius: 50px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+/* ==================== SIDEBAR (MENÚ LATERAL GRANATE) ==================== */
+.muni-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: linear-gradient(180deg, var(--muni-granate) 0%, var(--muni-granate-dark) 100%);
+    color: #FFFFFF;
+    z-index: 1030;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+    transition: var(--transition-smooth);
+}
+
+.sidebar-brand {
+    padding: 1.4rem 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.sidebar-brand img {
+    width: 54px;
+    height: 54px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+    transition: transform 0.3s ease;
+}
+
+.sidebar-brand:hover img {
+    transform: scale(1.06) rotate(-2deg);
+}
+
+.sidebar-brand-text h6 {
+    margin: 0;
+    font-weight: 800;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+    color: #FFFFFF;
+}
+
+.sidebar-brand-text span {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.75);
+    display: block;
+}
+
+.delegacion-selector-box {
+    margin: 1rem 1.2rem 0.5rem 1.2rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-left: 4px solid #FFFFFF;
+    border-radius: 8px;
+}
+
+.delegacion-selector-box small {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.delegacion-selector-box strong {
+    display: block;
+    font-size: 0.95rem;
+    color: #FFFFFF;
+}
+
+.sidebar-menu {
+    list-style: none;
+    padding: 0.8rem;
+    margin: 0;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
+.sidebar-section-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: rgba(255, 255, 255, 0.5);
+    padding: 0.8rem 1rem 0.3rem 1rem;
+    font-weight: 700;
+}
+
+.sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.75rem 1rem;
+    color: rgba(255, 255, 255, 0.82);
+    text-decoration: none;
+    border-radius: 10px;
+    font-weight: 500;
+    font-size: 0.9rem;
+    margin-bottom: 4px;
+    transition: var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
+}
+
+.sidebar-link i {
+    font-size: 1.15rem;
+    transition: transform 0.25s ease;
+}
+
+.sidebar-link:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #FFFFFF;
+    transform: translateX(5px);
+}
+
+.sidebar-link:hover i {
+    transform: scale(1.15);
+}
+
+.sidebar-link.active {
+    background: #FFFFFF;
+    color: var(--muni-granate);
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* ==================== CONTENIDO PRINCIPAL ==================== */
+.muni-main {
+    margin-left: var(--sidebar-width);
+    margin-top: var(--topbar-height);
+    padding: 2rem;
+    min-height: calc(100vh - var(--topbar-height));
+}
+
+/* ==================== TARJETAS KPI Y CONTENEDORES ==================== */
+.muni-card {
+    background: #FFFFFF;
+    border-radius: 14px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    padding: 1.4rem;
+    transition: var(--transition-smooth);
+    position: relative;
+    overflow: hidden;
+}
+
+.muni-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px -4px rgba(107, 15, 26, 0.12);
+    border-color: rgba(165, 28, 48, 0.25);
+}
+
+.muni-card-accent {
+    border-top: 4px solid var(--muni-crimson);
+}
+
+.kpi-icon-circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    background: rgba(165, 28, 48, 0.1);
+    color: var(--muni-crimson);
+    transition: var(--transition-smooth);
+}
+
+.muni-card:hover .kpi-icon-circle {
+    background: var(--muni-crimson);
+    color: #FFFFFF;
+    transform: rotate(6deg) scale(1.08);
+}
+
+/* ==================== BOTONES INSTITUCIONALES ==================== */
+.btn-muni {
+    background: linear-gradient(135deg, var(--muni-crimson) 0%, var(--muni-granate) 100%);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 9px;
+    padding: 0.6rem 1.25rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 10px rgba(165, 28, 48, 0.25);
+    transition: var(--transition-smooth);
+    text-decoration: none;
+}
+
+.btn-muni:hover {
+    background: linear-gradient(135deg, var(--muni-granate) 0%, var(--muni-granate-dark) 100%);
+    color: #FFFFFF;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(107, 15, 26, 0.35);
+}
+
+.btn-muni-outline {
+    background: #FFFFFF;
+    color: var(--muni-crimson);
+    border: 1.5px solid var(--muni-crimson);
+    border-radius: 9px;
+    padding: 0.55rem 1.15rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: var(--transition-smooth);
+}
+
+.btn-muni-outline:hover {
+    background: var(--muni-crimson);
+    color: #FFFFFF;
+    transform: translateY(-2px);
+}
+
+/* ==================== SEMÁFOROS Y ESTADOS ==================== */
+.semaforo-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.semaforo-verde {
+    background-color: var(--sem-verde);
+    animation: pulseSemaforo 2s infinite;
+}
+
+.semaforo-amarillo {
+    background-color: var(--sem-amarillo);
+}
+
+.semaforo-rojo {
+    background-color: var(--sem-rojo);
+}
+
+.badge-estado {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.76rem;
+}
+
+.estado-pendiente { background: #FEE2E2; color: #991B1B; }
+.estado-proceso { background: #FEF3C7; color: #92400E; }
+.estado-realizado { background: #D1FAE5; color: #065F46; }
+.estado-vencido { background: #E2E8F0; color: #475569; }
+
+/* ==================== TABLAS MODERNAS ==================== */
+.table-muni {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table-muni thead th {
+    background-color: #F8FAFC;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    font-weight: 700;
+    padding: 0.9rem 1rem;
+    border-bottom: 2px solid #E2E8F0;
+}
+
+.table-muni tbody tr {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.table-muni tbody tr:hover {
+    background-color: rgba(165, 28, 48, 0.035);
+}
+
+.table-muni tbody td {
+    padding: 0.95rem 1rem;
+    border-bottom: 1px solid #F1F5F9;
+    font-size: 0.88rem;
+    vertical-align: middle;
+}
+
+/* ==================== BARRAS DE PROGRESO ==================== */
+.progress-muni {
+    height: 10px;
+    border-radius: 50px;
+    background-color: #E2E8F0;
+    overflow: hidden;
+}
+
+.progress-bar-granate {
+    background: linear-gradient(90deg, var(--muni-crimson), var(--muni-granate));
+    border-radius: 50px;
+    transition: width 0.8s ease-in-out;
+}
