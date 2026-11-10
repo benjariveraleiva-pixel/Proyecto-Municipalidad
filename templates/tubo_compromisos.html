@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-kanban-fill me-2"></i>Tubo de Gestión de Compromisos</h4>
+            <small class="text-muted">Seguimiento colectivo de solicitudes y transiciones de estado por delegación</small>
+        </div>
+        <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevoCompromiso">
+            <i class="bi bi-plus-circle-fill"></i> Ingresar Nuevo Compromiso
+        </button>
+    </div>
+
+    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevoCompromiso">
+        <form method="post" class="row g-3">
+            {% csrf_token %}
+            <div class="col-md-3"><label class="small fw-bold">Fecha Actividad</label>{{ form.fecha_actividad }}</div>
+            <div class="col-md-5"><label class="small fw-bold">Meta Asociada</label>{{ form.meta_asignada }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Tipo Actividad</label>{{ form.tipo_actividad }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
+            <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Responsable Seguimiento</label>{{ form.responsable_tubo }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Área de Apoyo</label>{{ form.area_apoyo }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Fecha Compromiso</label>{{ form.fecha_compromiso }}</div>
+            <div class="col-md-9"><label class="small fw-bold">Descripción de la Solicitud / Problema</label>{{ form.descripcion }}</div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn-muni w-100 justify-content-center">Guardar en el Tubo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <form method="get" class="row g-2 mb-3">
+        <div class="col-md-5">
+            <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Buscar por código (AC-0001), RUT o solicitante...">
+        </div>
+        <div class="col-md-4">
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los estados del Tubo</option>
+                {% for cod, nombre in estados_tubo %}
+                    <option value="{{ cod }}" {% if estado_filtro == cod %}selected{% endif %}>{{ nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <button type="submit" class="btn-muni-outline w-100 py-1">Filtrar Tubo</button>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Solicitante / Territorio</th>
+                    <th>Problema / Solicitud</th>
+                    <th>Responsable / Apoyo</th>
+                    <th>Compromiso</th>
+                    <th>Estado Actual</th>
+                    <th>Cambiar Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in compromisos %}
+                    <tr>
+                        <td class="fw-bold">{{ c.codigo }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ c.solicitante_nombre }}</div>
+                            <small class="text-muted">{{ c.territorio.nombre }}</small>
+                        </td>
+                        <td>{{ c.descripcion }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ c.responsable_tubo.nombre_completo }}</div>
+                            <small class="text-muted">{{ c.area_apoyo|default:"Gestión interna" }}</small>
+                        </td>
+                        <td>{{ c.fecha_compromiso|date:"d/m/Y"|default:"-" }}</td>
+                        <td><span class="badge bg-dark">{{ c.get_estado_tubo_display }}</span></td>
+                        <td>
+                            <form method="post" action="{% url 'cambiar_estado_compromiso' c.id %}" class="d-flex gap-1">
+                                {% csrf_token %}
+                                <select name="nuevo_estado" class="form-select form-select-sm" style="width: 135px;">
+                                    {% for cod, label in estados_tubo %}
+                                        <option value="{{ cod }}" {% if c.estado_tubo == cod %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Avance..." style="width: 120px;">
+                                <button type="submit" class="btn btn-sm btn-danger" style="background: var(--muni-crimson);">OK</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted py-4">No hay compromisos registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

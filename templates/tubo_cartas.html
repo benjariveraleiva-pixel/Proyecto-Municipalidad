@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-envelope-paper-fill me-2"></i>Tubo de Cartas y Oficios</h4>
+            <small class="text-muted">Control documental de cartas ingresadas, derivaciones y pronunciamientos</small>
+        </div>
+        <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevaCarta">
+            <i class="bi bi-plus-circle-fill"></i> Registrar Nueva Carta
+        </button>
+    </div>
+
+    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevaCarta">
+        <form method="post" class="row g-3">
+            {% csrf_token %}
+            <div class="col-md-3"><label class="small fw-bold">N° Carta / Oficio</label>{{ form.numero_carta }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Fecha Ingreso</label>{{ form.fecha_ingreso }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Delegación</label>{{ form.delegacion }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Teléfono Contacto</label>{{ form.telefono }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Remitente</label>{{ form.remitente }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Destinatario</label>{{ form.destinatario }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Responsable Seguimiento</label>{{ form.responsable_seguimiento }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Área Derivada</label>{{ form.area_derivada }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Fecha Respuesta Comprometida</label>{{ form.fecha_respuesta_compromiso }}</div>
+            <div class="col-md-12"><label class="small fw-bold">Materia de la Carta</label>{{ form.materia }}</div>
+            <div class="col-12 text-end">
+                <button type="submit" class="btn-muni">Guardar Carta en el Tubo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / N° Carta</th>
+                    <th>Remitente / Destinatario</th>
+                    <th>Materia</th>
+                    <th>Responsable / Derivación</th>
+                    <th>Estado</th>
+                    <th>Transición de Estado y Pronunciamiento</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for carta in cartas %}
+                    <tr>
+                        <td>
+                            <div class="fw-bold">{{ carta.codigo }}</div>
+                            <small class="text-muted">Oficio: {{ carta.numero_carta }}</small>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">{{ carta.remitente }}</div>
+                            <small class="text-muted">Para: {{ carta.destinatario }}</small>
+                        </td>
+                        <td>{{ carta.materia }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ carta.responsable_seguimiento.nombre_completo }}</div>
+                            <small class="text-muted">{{ carta.area_derivada }}</small>
+                        </td>
+                        <td><span class="badge bg-secondary">{{ carta.get_estado_display }}</span></td>
+                        <td>
+                            <form method="post" action="{% url 'cambiar_estado_carta' carta.id %}" class="d-flex gap-1">
+                                {% csrf_token %}
+                                <select name="nuevo_estado" class="form-select form-select-sm" style="width: 135px;">
+                                    {% for cod, nombre in estados_carta %}
+                                        <option value="{{ cod }}" {% if carta.estado == cod %}selected{% endif %}>{{ nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="text" name="pronunciamiento" value="{{ carta.pronunciamiento }}" class="form-control form-control-sm" placeholder="Pronunciamiento..." style="width: 140px;">
+                                <button type="submit" class="btn btn-sm text-white" style="background: var(--muni-crimson);">Actualizar</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">No existen cartas registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

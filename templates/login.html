@@ -1,0 +1,117 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso Institucional | SGR Municipalidad de La Serena</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'css/municipalidad.css' %}">
+    <style>
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, var(--muni-granate-dark) 0%, var(--muni-crimson) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .login-wrapper {
+            max-width: 920px;
+            width: 100%;
+            background: #FFFFFF;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+        }
+        .login-side-brand {
+            background: linear-gradient(180deg, var(--muni-crimson) 0%, var(--muni-granate) 100%);
+            color: #FFFFFF;
+            padding: 3rem 2.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .login-side-brand img {
+            width: 120px;
+            border-radius: 14px;
+            border: 3px solid rgba(255,255,255,0.9);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-wrapper row g-0 animate-fade-up">
+    <!-- Columna Izquierda Institucional -->
+    <div class="col-md-5 login-side-brand">
+        <div>
+            <img src="{% static 'img/logo_rojo.jpg' %}" alt="Escudo Municipalidad de La Serena" class="mb-4">
+            <h4 class="fw-extrabold mb-2">Sistema de Gestión de Resultados (SGR)</h4>
+            <p class="small text-white-50 mb-0">
+                Plataforma centralizada de seguimiento territorial, metas trimestrales, Tubo de gestión y verificación de evidencias.
+            </p>
+        </div>
+        <div class="pt-4 border-top border-light border-opacity-25">
+            <small class="d-block text-white-50">Coordinación de Delegaciones</small>
+            <strong class="small">Ilustre Municipalidad de La Serena · 2026</strong>
+        </div>
+    </div>
+
+    <!-- Columna Derecha Formulario de Acceso -->
+    <div class="col-md-7 p-4 p-lg-5 bg-white">
+        <div class="d-flex align-items-center justify-content-between mb-4">
+            <div>
+                <h4 class="fw-bold mb-1" style="color: var(--muni-granate);">Iniciar Sesión</h4>
+                <small class="text-muted">Ingrese sus credenciales institucionales para continuar</small>
+            </div>
+            <img src="{% static 'img/logo_blanco.jpg' %}" alt="Logo La Serena" style="height: 52px;">
+        </div>
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} py-2 small fw-semibold">
+                    <i class="bi bi-exclamation-circle-fill me-1"></i> {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="post" action="{% url 'login' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label class="form-label small fw-bold text-secondary">Usuario o Correo Institucional</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-light"><i class="bi bi-person-fill" style="color: var(--muni-crimson);"></i></span>
+                    <input type="text" name="username" class="form-control" placeholder="Ej: admin_sgr o amorales" required autofocus>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label small fw-bold text-secondary">Contraseña</label>
+                <div class="input-group">
+                    <span class="input-group-text bg-light"><i class="bi bi-lock-fill" style="color: var(--muni-crimson);"></i></span>
+                    <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-muni w-100 justify-content-center py-2 mb-3">
+                <i class="bi bi-box-arrow-in-right"></i> Ingresar a la Plataforma SGR
+            </button>
+        </form>
+
+        <!-- Cuadro de Cuentas de Prueba para el Equipo -->
+        <div class="p-3 rounded-3 bg-light border mt-3">
+            <div class="small fw-bold mb-1" style="color: var(--muni-granate);"><i class="bi bi-key-fill me-1"></i>Credenciales cargadas en Base de Datos (Clave: <code>muni2026</code>):</div>
+            <div class="row small text-muted g-1" style="font-size: 0.78rem;">
+                <div class="col-6">• <code>admin_sgr</code> (Administrador)</div>
+                <div class="col-6">• <code>delegado_comp</code> (Delegado)</div>
+                <div class="col-6">• <code>amorales</code> (Gestor Social)</div>
+                <div class="col-6">• <code>verificador</code> (Verificador)</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

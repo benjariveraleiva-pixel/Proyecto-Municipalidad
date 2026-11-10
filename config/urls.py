@@ -22,7 +22,16 @@ from sgr import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('login/', views.login_institucional, name='login'),
+    path('logout/', views.cerrar_sesion, name='logout'),
     path('', views.dashboard_inicio, name='dashboard_inicio'),
+
+    # Nuevas rutas para la entrega del Lunes 16/11
+    path('metas/', views.asignacion_metas_view, name='asignacion_metas'),
+    path('tubo-compromisos/', views.tubo_compromisos_view, name='tubo_compromisos'),
+    path('tubo-compromisos/<int:pk>/estado/', views.cambiar_estado_compromiso, name='cambiar_estado_compromiso'),
+    path('tubo-cartas/', views.tubo_cartas_view, name='tubo_cartas'),
+    path('tubo-cartas/<int:pk>/estado/', views.cambiar_estado_carta, name='cambiar_estado_carta'),
 ]
 
 if settings.DEBUG:

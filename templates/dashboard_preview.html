@@ -2,66 +2,73 @@
 {% load static %}
 
 {% block content %}
-<!-- Encabezado con Logo Blanco Institucional y Filtros -->
+<!-- Encabezado con Logo Blanco Institucional y Filtros Reales -->
 <div class="muni-card mb-4 animate-fade-up">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
         <div class="d-flex align-items-center gap-3">
             <img src="{% static 'img/logo_blanco.jpg' %}" alt="Logo La Serena" style="height: 58px; border-radius: 8px;">
             <div>
-                <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">Delegación Compañías</h4>
-                <small class="text-muted"><i class="bi bi-clock-history me-1"></i>Última actualización: Tiempo real · Tope de cumplimiento 120%</small>
+                <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                    Delegación {{ delegacion_actual.nombre|default:"General La Serena" }}
+                </h4>
+                <small class="text-muted">
+                    <i class="bi bi-clock-history me-1"></i>Datos en vivo desde Base de Datos · Meta esperada hoy: <strong>{{ meta_esperada_hoy }}%</strong> (Tope 120%)
+                </small>
             </div>
         </div>
         <div class="d-flex gap-2">
-            <button class="btn-muni-outline"><i class="bi bi-funnel me-1"></i>Limpiar filtros</button>
-            <a href="#" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Nueva Actividad / Compromiso</a>
+            <a href="{% url 'dashboard_inicio' %}" class="btn-muni-outline text-decoration-none"><i class="bi bi-funnel me-1"></i>Limpiar filtros</a>
+            <a href="/admin/sgr/actividad/add/" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Nueva Actividad / Compromiso</a>
         </div>
     </div>
 
-    <!-- Barra de Filtros Rápidos -->
-    <div class="row g-3">
+    <!-- Formulario Real de Filtros GET -->
+    <form method="get" class="row g-3">
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
-            <select class="form-select form-select-sm">
-                <option selected>Trimestre 4 (Oct - Dic 2026)</option>
-                <option>Trimestre 3 (Jul - Sep 2026)</option>
+            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for t in trimestres %}
+                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                {% endfor %}
             </select>
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
-            <select class="form-select form-select-sm">
-                <option selected>Todos los funcionarios</option>
-                <option>Andrea Morales (Gestor Social)</option>
-                <option>Felipe Rojas (Territorial OOCC)</option>
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios_lista %}
+                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>
+                        {{ f.nombre_completo }} ({{ f.cargo.nombre }})
+                    </option>
+                {% endfor %}
             </select>
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
-            <select class="form-select form-select-sm">
-                <option selected>Todos los territorios</option>
-                <option>Las Compañías Centro</option>
-                <option>El Olivar / La Varilla</option>
+            <select name="territorio" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los territorios</option>
+                {% for ter in territorios_lista %}
+                    <option value="{{ ter.id }}" {% if filtro_territorio == ter.id|stringformat:"s" %}selected{% endif %}>{{ ter.nombre }}</option>
+                {% endfor %}
             </select>
         </div>
         <div class="col-md-3">
             <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
-            <input type="text" class="form-control form-control-sm" placeholder="Buscar por código, RUT o vecino...">
+            <input type="text" name="q" value="{{ filtro_q }}" class="form-control form-control-sm" placeholder="Código, RUT o solicitante...">
         </div>
-    </div>
+    </form>
 </div>
 
-<!-- Tarjetas KPI Superiores -->
+<!-- Tarjetas KPI Conectadas a Base de Datos -->
 <div class="row g-4 mb-4">
     <div class="col-md-3 animate-fade-up delay-1">
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
                 <span class="text-muted small fw-semibold">Cumplimiento General</span>
-                <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">78.4%</h2>
-                <small class="text-success fw-semibold"><i class="bi bi-arrow-up-right"></i> Meta al día: 70.0%</small>
+                <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ cumplimiento_general }}%</h2>
+                <small class="text-success fw-semibold"><i class="bi bi-arrow-up-right"></i> Esperado al día: {{ meta_esperada_hoy }}%</small>
             </div>
-            <div class="kpi-icon-circle">
-                <i class="bi bi-pie-chart-fill"></i>
-            </div>
+            <div class="kpi-icon-circle"><i class="bi bi-pie-chart-fill"></i></div>
         </div>
     </div>
 
@@ -69,12 +76,10 @@
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
                 <span class="text-muted small fw-semibold">Actividades Aprobadas</span>
-                <h2 class="fw-extrabold mb-0 mt-1">126</h2>
+                <h2 class="fw-extrabold mb-0 mt-1">{{ total_aprobadas }}</h2>
                 <small class="text-muted">Aprobadas y ponderan</small>
             </div>
-            <div class="kpi-icon-circle">
-                <i class="bi bi-file-earmark-check-fill"></i>
-            </div>
+            <div class="kpi-icon-circle"><i class="bi bi-file-earmark-check-fill"></i></div>
         </div>
     </div>
 
@@ -82,12 +87,10 @@
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
                 <span class="text-muted small fw-semibold">Pendientes Verificación</span>
-                <h2 class="fw-extrabold mb-0 mt-1 text-warning">18</h2>
-                <small class="text-muted">Con evidencia adjunta</small>
+                <h2 class="fw-extrabold mb-0 mt-1 text-warning">{{ total_pendientes_verif }}</h2>
+                <small class="text-muted">En bandeja de revisión</small>
             </div>
-            <div class="kpi-icon-circle">
-                <i class="bi bi-hourglass-split"></i>
-            </div>
+            <div class="kpi-icon-circle"><i class="bi bi-hourglass-split"></i></div>
         </div>
     </div>
 
@@ -95,144 +98,96 @@
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
                 <span class="text-muted small fw-semibold">Compromisos Vencidos</span>
-                <h2 class="fw-extrabold mb-0 mt-1 text-danger">7</h2>
-                <small class="text-danger fw-semibold">Requieren atención en Tubo</small>
+                <h2 class="fw-extrabold mb-0 mt-1 text-danger">{{ total_vencidos }}</h2>
+                <small class="text-danger fw-semibold">En el Tubo de gestión</small>
             </div>
-            <div class="kpi-icon-circle">
-                <i class="bi bi-exclamation-triangle-fill"></i>
-            </div>
+            <div class="kpi-icon-circle"><i class="bi bi-exclamation-triangle-fill"></i></div>
         </div>
     </div>
 </div>
 
-<!-- Sección Central: Cumplimiento de Metas y Semáforo por Funcionario -->
+<!-- Sección Central con Registros Reales -->
 <div class="row g-4">
-    <!-- Cumplimiento de Metas -->
     <div class="col-lg-7 animate-fade-up delay-2">
         <div class="muni-card h-100">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-steps me-2" style="color: var(--muni-crimson);"></i>Cumplimiento de Metas Asignadas</h6>
-                <span class="badge bg-light text-dark border">Ponderación Total: 100%</span>
+                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-steps me-2" style="color: var(--muni-crimson);"></i>Cumplimiento de Metas Asignadas (BD Real)</h6>
+                <span class="badge bg-light text-dark border">Tope máx: 120%</span>
             </div>
 
-            <div class="mb-3">
-                <div class="d-flex justify-content-between small mb-1">
-                    <span class="fw-semibold">Meta 1 · Atención social y programas comunitarios (Pond: 40%)</span>
-                    <span class="fw-bold" style="color: var(--muni-crimson);">85% / Esperado: 75%</span>
+            {% for asig in asignaciones_metas %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="fw-semibold">
+                            {{ asig.meta.nombre }} · <span class="text-muted">{{ asig.funcionario.nombre_completo }} (Pond: {{ asig.ponderacion }}%)</span>
+                        </span>
+                        <span class="fw-bold" style="color: var(--muni-crimson);">
+                            {{ asig.actividades_aprobadas_count }}/{{ asig.cantidad_objetivo }} ({{ asig.porcentaje_cumplimiento_aplicable }}%)
+                        </span>
+                    </div>
+                    <div class="progress-muni">
+                        <div class="progress-bar-granate" style="width: {{ asig.porcentaje_cumplimiento_aplicable }}%;"></div>
+                    </div>
                 </div>
-                <div class="progress-muni">
-                    <div class="progress-bar-granate" style="width: 85%;"></div>
-                </div>
-            </div>
+            {% empty %}
+                <p class="text-muted small">No hay metas asignadas para los filtros seleccionados.</p>
+            {% endfor %}
 
-            <div class="mb-3">
-                <div class="d-flex justify-content-between small mb-1">
-                    <span class="fw-semibold">Meta 2 · Participación ciudadana y JJVV (Pond: 35%)</span>
-                    <span class="fw-bold" style="color: var(--muni-crimson);">72% / Esperado: 75%</span>
-                </div>
-                <div class="progress-muni">
-                    <div class="progress-bar-granate" style="width: 72%;"></div>
-                </div>
-            </div>
-
-            <div class="mb-4">
-                <div class="d-flex justify-content-between small mb-1">
-                    <span class="fw-semibold">Meta 3 · Soluciones de ingresos al Tubo y Cartas (Pond: 25%)</span>
-                    <span class="fw-bold" style="color: var(--muni-crimson);">60% / Esperado: 75%</span>
-                </div>
-                <div class="progress-muni">
-                    <div class="progress-bar-granate" style="width: 60%;"></div>
-                </div>
-            </div>
-
-            <!-- Tabla de Próximos Vencimientos en el Tubo -->
-            <h6 class="fw-bold mb-3 pt-2 border-top"><i class="bi bi-calendar-event me-2" style="color: var(--muni-crimson);"></i>Próximos Compromisos y Cartas en el Tubo</h6>
+            <h6 class="fw-bold mb-3 pt-3 border-top"><i class="bi bi-calendar-event me-2" style="color: var(--muni-crimson);"></i>Compromisos y Cartas Activas en el Tubo</h6>
             <div class="table-responsive">
                 <table class="table-muni">
                     <thead>
                         <tr>
                             <th>Código</th>
-                            <th>Solicitante / Vecino</th>
+                            <th>Solicitante / Remitente</th>
                             <th>Responsable</th>
                             <th>Compromiso</th>
                             <th>Estado</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td class="fw-bold">AC-0042</td>
-                            <td>JJVV Las Violetas</td>
-                            <td>Andrea Morales</td>
-                            <td>14 nov 2026</td>
-                            <td><span class="badge-estado estado-proceso">En proceso</span></td>
-                        </tr>
-                        <tr>
-                            <td class="fw-bold">CA-0118</td>
-                            <td>Miguel Araya (Carta)</td>
-                            <td>Felipe Rojas</td>
-                            <td>15 nov 2026</td>
-                            <td><span class="badge-estado estado-pendiente">Pendiente</span></td>
-                        </tr>
-                        <tr>
-                            <td class="fw-bold">GS-0073</td>
-                            <td>Yesenia Merino</td>
-                            <td>Camila Díaz</td>
-                            <td>16 nov 2026</td>
-                            <td><span class="badge-estado estado-realizado">Realizado</span></td>
-                        </tr>
+                        {% for item in items_tubo %}
+                            <tr>
+                                <td class="fw-bold">{{ item.codigo }}</td>
+                                <td>{{ item.solicitante }}</td>
+                                <td>{{ item.responsable }}</td>
+                                <td>{{ item.fecha_compromiso|date:"d M Y"|default:"Sin fecha" }}</td>
+                                <td>
+                                    <span class="badge-estado {{ item.clase_badge }}">{{ item.estado_label }}</span>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">No existen compromisos registrados con esos criterios.</td>
+                            </tr>
+                        {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- Semáforo por Funcionario -->
+    <!-- Semáforo Calculado en Vivo por Funcionario -->
     <div class="col-lg-5 animate-fade-up delay-3">
         <div class="muni-card h-100">
             <h6 class="fw-bold mb-3"><i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>Semáforo de Avance por Funcionario</h6>
-            <p class="small text-muted mb-3">Cálculo en base a actividades en estado <strong>Aprobada y pondera</strong> (Tope 120% por meta).</p>
+            <p class="small text-muted mb-3">Calculado en tiempo real según metas asignadas y actividades en estado <strong>Aprobada y pondera</strong>.</p>
 
-            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
-                <div class="d-flex align-items-center gap-3">
-                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
-                    <div>
-                        <div class="fw-bold">Andrea Morales</div>
-                        <small class="text-muted">Gestor Social · 42 ingresos</small>
+            {% for item in semaforo_funcionarios %}
+                <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
+                    <div class="d-flex align-items-center gap-3">
+                        <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
+                        <div>
+                            <div class="fw-bold">{{ item.funcionario.nombre_completo }}</div>
+                            <small class="text-muted">{{ item.funcionario.cargo.nombre }} · {{ item.total_ingresos }} actividades</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="fw-extrabold fs-5">{{ item.cumplimiento_ponderado }}%</span>
+                        <span class="semaforo-dot semaforo-{{ item.color_semaforo }}"></span>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="fw-extrabold fs-5">92.4%</span>
-                    <span class="semaforo-dot semaforo-verde" title="Sobre el objetivo diario"></span>
-                </div>
-            </div>
-
-            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
-                <div class="d-flex align-items-center gap-3">
-                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
-                    <div>
-                        <div class="fw-bold">Felipe Rojas</div>
-                        <small class="text-muted">Territorial OOCC · 29 ingresos</small>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="fw-extrabold fs-5">74.0%</span>
-                    <span class="semaforo-dot semaforo-amarillo" title="En rango de alerta"></span>
-                </div>
-            </div>
-
-            <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
-                <div class="d-flex align-items-center gap-3">
-                    <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
-                    <div>
-                        <div class="fw-bold">Camila Díaz</div>
-                        <small class="text-muted">Apoyo Administrativo · 15 ingresos</small>
-                    </div>
-                </div>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="fw-extrabold fs-5">51.2%</span>
-                    <span class="semaforo-dot semaforo-rojo" title="Bajo el umbral esperado"></span>
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
 </div>

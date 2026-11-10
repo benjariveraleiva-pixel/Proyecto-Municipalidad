@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Formulario de Asignación con Validaciones -->
+    <div class="col-lg-4 animate-fade-up">
+        <div class="muni-card muni-card-accent">
+            <h5 class="fw-bold mb-1" style="color: var(--muni-granate);"><i class="bi bi-bullseye me-2"></i>Asignar Meta Individual</h5>
+            <p class="small text-muted mb-3">La sumatoria de ponderaciones por funcionario en el trimestre no puede superar el 100%.</p>
+
+            {% if form.errors %}
+                <div class="alert alert-danger small py-2">
+                    {{ form.non_field_errors }}
+                    {% for field in form %}
+                        {% for error in field.errors %}<div>• {{ error }}</div>{% endfor %}
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Funcionario</label>
+                    {{ form.funcionario }}
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Trimestre</label>
+                    {{ form.trimestre }}
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-bold">Meta del Catálogo</label>
+                    {{ form.meta }}
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small fw-bold">Meta Cuantitativa</label>
+                        {{ form.cantidad_objetivo }}
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small fw-bold">Ponderación (%)</label>
+                        {{ form.ponderacion }}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Observación</label>
+                    {{ form.observacion }}
+                </div>
+                <div class="form-check mb-3">
+                    {{ form.activa }}
+                    <label class="form-check-label small">Meta activa para cálculo trimestral</label>
+                </div>
+                <button type="submit" class="btn-muni w-100 justify-content-center">
+                    <i class="bi bi-check2-circle"></i> Guardar y Validar Ponderación
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Control de Ponderaciones por Funcionario -->
+    <div class="col-lg-8 animate-fade-up delay-1">
+        <div class="muni-card">
+            <h5 class="fw-bold mb-3" style="color: var(--muni-granate);">
+                Estado de Ponderaciones Asignadas · {{ trimestre_activo.nombre }}
+            </h5>
+
+            {% for item in resumen_funcionarios %}
+                <div class="p-3 mb-3 rounded-3 border bg-light bg-opacity-50">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <strong class="fs-6">{{ item.funcionario.nombre_completo }}</strong>
+                            <span class="badge bg-secondary ms-2">{{ item.funcionario.cargo.nombre }}</span>
+                        </div>
+                        <div>
+                            <span class="fw-bold {% if item.total_ponderacion == 100 %}text-success{% else %}text-warning{% endif %}">
+                                Total Asignado: {{ item.total_ponderacion }}%
+                            </span>
+                            <small class="text-muted ms-2">(Disponible: {{ item.disponible }}%)</small>
+                        </div>
+                    </div>
+
+                    <div class="progress-muni mb-3">
+                        <div class="progress-bar-granate" style="width: {{ item.total_ponderacion }}%;"></div>
+                    </div>
+
+                    <table class="table-muni bg-white rounded">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Meta Asignada</th>
+                                <th>Meta Cuantitativa</th>
+                                <th>Ponderación</th>
+                                <th>Avance Aprobado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in item.metas %}
+                                <tr>
+                                    <td class="fw-bold">{{ m.meta.codigo }}</td>
+                                    <td>{{ m.meta.nombre }}</td>
+                                    <td><span class="badge bg-light text-dark border">{{ m.cantidad_objetivo }} {{ m.meta.unidad_medida }}</span></td>
+                                    <td class="fw-bold" style="color: var(--muni-crimson);">{{ m.ponderacion }}%</td>
+                                    <td>{{ m.actividades_aprobadas_count }} / {{ m.cantidad_objetivo }} ({{ m.porcentaje_cumplimiento_aplicable }}%)</td>
+                                </tr>
+                            {% empty %}
+                                <tr><td colspan="5" class="text-muted small text-center">Sin metas asignadas en este trimestre.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
