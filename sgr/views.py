@@ -11,6 +11,12 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Sum
 from .models import HistorialTubo
 from .forms import AsignacionMetaForm, CompromisoTuboForm, TuboCartaForm
+from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.messages.views import SuccessMessageMixin
+from .models import Vecino, JuntaVecinos, Hito
+from .forms import VecinoForm, JuntaVecinosForm, HitoForm
 
 
 def login_institucional(request):
@@ -348,3 +354,73 @@ def cambiar_estado_carta(request, pk):
         )
         messages.success(request, f"Carta {carta.codigo} actualizada al estado '{carta.get_estado_display()}'.")
     return redirect('tubo_cartas')
+
+# ==============================================================================
+# MANTENEDORES (CRUD): VECINOS, JUNTAS E HITOS
+# ==============================================================================
+
+# --- CRUD VECINOS ---
+class VecinoListView(LoginRequiredMixin, ListView):
+    model = Vecino
+    template_name = 'crud/vecinos_list.html'
+    context_object_name = 'vecinos'
+
+class VecinoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+    model = Vecino
+    form_class = VecinoForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('vecinos_list')
+    success_message = "Vecino registrado exitosamente."
+    extra_context = {'titulo': 'Registrar Nuevo Vecino', 'url_cancelar': 'vecinos_list'}
+
+class VecinoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+    model = Vecino
+    form_class = VecinoForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('vecinos_list')
+    success_message = "Vecino actualizado exitosamente."
+    extra_context = {'titulo': 'Editar Vecino', 'url_cancelar': 'vecinos_list'}
+
+# --- CRUD JUNTAS DE VECINOS ---
+class JuntaListView(LoginRequiredMixin, ListView):
+    model = JuntaVecinos
+    template_name = 'crud/juntas_list.html'
+    context_object_name = 'juntas'
+
+class JuntaCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+    model = JuntaVecinos
+    form_class = JuntaVecinosForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('juntas_list')
+    success_message = "Junta de Vecinos registrada exitosamente."
+    extra_context = {'titulo': 'Registrar Junta de Vecinos', 'url_cancelar': 'juntas_list'}
+
+class JuntaUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+    model = JuntaVecinos
+    form_class = JuntaVecinosForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('juntas_list')
+    success_message = "Junta de Vecinos actualizada exitosamente."
+    extra_context = {'titulo': 'Editar Junta de Vecinos', 'url_cancelar': 'juntas_list'}
+
+# --- CRUD HITOS PROGRAMADOS ---
+class HitoListView(LoginRequiredMixin, ListView):
+    model = Hito
+    template_name = 'crud/hitos_list.html'
+    context_object_name = 'hitos'
+
+class HitoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+    model = Hito
+    form_class = HitoForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('hitos_list')
+    success_message = "Hito programado exitosamente."
+    extra_context = {'titulo': 'Programar Nuevo Hito', 'url_cancelar': 'hitos_list'}
+
+class HitoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+    model = Hito
+    form_class = HitoForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('hitos_list')
+    success_message = "Hito actualizado exitosamente."
+    extra_context = {'titulo': 'Editar Hito', 'url_cancelar': 'hitos_list'}

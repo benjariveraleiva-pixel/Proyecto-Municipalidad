@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="muni-card animate-fade-up">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-person-vcard-fill me-2"></i>Directorio de Vecinos</h4>
+        <a href="{% url 'vecinos_crear' %}" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Registrar Vecino</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>RUT</th>
+                    <th>Nombre Completo</th>
+                    <th>Teléfono</th>
+                    <th>Territorio</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in vecinos %}
+                <tr>
+                    <td class="fw-bold">{{ v.rut }}</td>
+                    <td>{{ v.nombres }} {{ v.apellidos }}</td>
+                    <td>{{ v.telefono }}</td>
+                    <td>{{ v.territorio.nombre }}</td>
+                    <td>
+                        {% if v.activo %}<span class="badge bg-success">Activo</span>
+                        {% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'vecinos_editar' v.id %}" class="btn btn-sm btn-light"><i class="bi bi-pencil-fill text-primary"></i> Editar</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No hay vecinos registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

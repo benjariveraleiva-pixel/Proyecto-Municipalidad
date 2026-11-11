@@ -32,6 +32,19 @@ urlpatterns = [
     path('tubo-compromisos/<int:pk>/estado/', views.cambiar_estado_compromiso, name='cambiar_estado_compromiso'),
     path('tubo-cartas/', views.tubo_cartas_view, name='tubo_cartas'),
     path('tubo-cartas/<int:pk>/estado/', views.cambiar_estado_carta, name='cambiar_estado_carta'),
+
+    # Rutas CRUD
+    path('vecinos/', views.VecinoListView.as_view(), name='vecinos_list'),
+    path('vecinos/nuevo/', views.VecinoCreateView.as_view(), name='vecinos_crear'),
+    path('vecinos/<int:pk>/editar/', views.VecinoUpdateView.as_view(), name='vecinos_editar'),
+
+    path('juntas/', views.JuntaListView.as_view(), name='juntas_list'),
+    path('juntas/nueva/', views.JuntaCreateView.as_view(), name='juntas_crear'),
+    path('juntas/<int:pk>/editar/', views.JuntaUpdateView.as_view(), name='juntas_editar'),
+
+    path('hitos/', views.HitoListView.as_view(), name='hitos_list'),
+    path('hitos/nuevo/', views.HitoCreateView.as_view(), name='hitos_crear'),
+    path('hitos/<int:pk>/editar/', views.HitoUpdateView.as_view(), name='hitos_editar'),
 ]
 
 if settings.DEBUG:

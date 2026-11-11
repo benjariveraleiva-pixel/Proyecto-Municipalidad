@@ -1,5 +1,6 @@
 from django import forms
 from .models import AsignacionMeta, Actividad, TuboCarta
+from .models import Vecino, JuntaVecinos, Hito
 
 
 class AsignacionMetaForm(forms.ModelForm):
@@ -60,4 +61,48 @@ class TuboCartaForm(forms.ModelForm):
             'responsable_seguimiento': forms.Select(attrs={'class': 'form-select form-select-sm'}),
             'area_derivada': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Ej: Operaciones / SECPLAN'}),
             'fecha_respuesta_compromiso': forms.DateInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}),
+        }
+        
+class VecinoForm(forms.ModelForm):
+    class Meta:
+        model = Vecino
+        fields = ['rut', 'nombres', 'apellidos', 'telefono', 'correo', 'direccion', 'territorio', 'activo']
+        widgets = {
+            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: 12.345.678-9'}),
+            'nombres': forms.TextInput(attrs={'class': 'form-control'}),
+            'apellidos': forms.TextInput(attrs={'class': 'form-control'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+569...'}),
+            'correo': forms.EmailInput(attrs={'class': 'form-control'}),
+            'direccion': forms.TextInput(attrs={'class': 'form-control'}),
+            'territorio': forms.Select(attrs={'class': 'form-select'}),
+            'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+class JuntaVecinosForm(forms.ModelForm):
+    class Meta:
+        model = JuntaVecinos
+        fields = ['nombre', 'direccion', 'delegacion', 'territorio', 'fecha_constitucion', 'activa']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: JJVV Las Violetas'}),
+            'direccion': forms.TextInput(attrs={'class': 'form-control'}),
+            'delegacion': forms.Select(attrs={'class': 'form-select'}),
+            'territorio': forms.Select(attrs={'class': 'form-select'}),
+            'fecha_constitucion': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+class HitoForm(forms.ModelForm):
+    class Meta:
+        model = Hito
+        fields = ['nombre', 'descripcion', 'periodicidad', 'fecha_inicio', 'fecha_termino', 'delegacion', 'territorio', 'responsables', 'estado']
+        widgets = {
+            'nombre': forms.TextInput(attrs={'class': 'form-control'}),
+            'descripcion': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'periodicidad': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: Anual'}),
+            'fecha_inicio': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'fecha_termino': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'delegacion': forms.Select(attrs={'class': 'form-select'}),
+            'territorio': forms.Select(attrs={'class': 'form-select'}),
+            'responsables': forms.SelectMultiple(attrs={'class': 'form-select'}),
+            'estado': forms.Select(attrs={'class': 'form-select'}),
         }
