@@ -1,6 +1,9 @@
 from django import forms
 from .models import AsignacionMeta, Actividad, TuboCarta
 from .models import Vecino, JuntaVecinos, Hito
+from django import forms
+from django.contrib.auth.models import User
+from .models import Funcionario, Rol
 
 
 class AsignacionMetaForm(forms.ModelForm):
@@ -106,3 +109,40 @@ class HitoForm(forms.ModelForm):
             'responsables': forms.SelectMultiple(attrs={'class': 'form-select'}),
             'estado': forms.Select(attrs={'class': 'form-select'}),
         }
+
+class FuncionarioCreateForm(forms.ModelForm):
+    username = forms.CharField(
+        label="Nombre de Usuario Institucional",
+        max_length=150, 
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: jperezo'})
+    )
+    roles = forms.ModelMultipleChoiceField(
+        queryset=Rol.objects.filter(activo=True),
+        widget=forms.SelectMultiple(attrs={'class': 'form-select', 'size': '4'}),
+        help_text="Mantenga presionado Ctrl (o Cmd) para seleccionar múltiples roles."
+    )
+
+    class Meta:
+        model = Funcionario
+        fields = ['rut', 'nombres', 'apellidos', 'correo', 'telefono', 'cargo', 'delegacion', 'roles']
+        widgets = {
+            'rut': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '12.345.678-9'}),
+            'nombres': forms.TextInput(attrs={'class': 'form-control'}),
+            'apellidos': forms.TextInput(attrs={'class': 'form-control'}),
+            'correo': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'correo@laserena.cl'}),
+            'telefono': forms.TextInput(attrs={'class': 'form-control'}),
+            'cargo': forms.Select(attrs={'class': 'form-select'}),
+            'delegacion': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def clean_username(self):
+        username = self.cleaned_data.get('username')
+        if User.objects.filter(username=username).exists():
+            raise forms.ValidationError("Este nombre de usuario ya está en uso en el sistema.")
+        return username
+
+    def clean_correo(self):
+        correo = self.cleaned_data.get('correo')
+        if User.objects.filter(email=correo).exists() or Funcionario.objects.filter(correo=correo).exists():
+            raise forms.ValidationError("Este correo institucional ya se encuentra registrado.")
+        return correo

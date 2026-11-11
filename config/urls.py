@@ -25,6 +25,7 @@ urlpatterns = [
     path('login/', views.login_institucional, name='login'),
     path('logout/', views.cerrar_sesion, name='logout'),
     path('', views.dashboard_inicio, name='dashboard_inicio'),
+    path('funcionarios/nuevo/', views.FuncionarioCreateView.as_view(), name='funcionarios_crear'),
 
     # Nuevas rutas para la entrega del Lunes 16/11
     path('metas/', views.asignacion_metas_view, name='asignacion_metas'),

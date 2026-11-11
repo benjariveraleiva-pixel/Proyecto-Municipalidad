@@ -17,6 +17,16 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from .models import Vecino, JuntaVecinos, Hito
 from .forms import VecinoForm, JuntaVecinosForm, HitoForm
+import string
+import random
+from django.contrib.auth.models import User
+from django.urls import reverse_lazy
+from django.views.generic import CreateView
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.messages.views import SuccessMessageMixin
+from django.contrib import messages
+from .models import Funcionario
+from .forms import FuncionarioCreateForm
 
 
 def login_institucional(request):
@@ -424,3 +434,46 @@ class HitoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     success_url = reverse_lazy('hitos_list')
     success_message = "Hito actualizado exitosamente."
     extra_context = {'titulo': 'Editar Hito', 'url_cancelar': 'hitos_list'}
+
+class FuncionarioCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+    model = Funcionario
+    form_class = FuncionarioCreateForm
+    template_name = 'crud/form_base.html'
+    success_url = reverse_lazy('dashboard_inicio') # Redirige al dashboard temporalmente
+    extra_context = {'titulo': 'Registrar Nuevo Funcionario', 'url_cancelar': 'dashboard_inicio'}
+
+    def form_valid(self, form):
+        # 1. Generar credencial temporal de un solo uso (8 caracteres aleatorios)
+        caracteres = string.ascii_letters + string.digits
+        clave_temporal = ''.join(random.choices(caracteres, k=8))
+        
+        # 2. Crear el User nativo de Django
+        user = User.objects.create_user(
+            username=form.cleaned_data['username'],
+            email=form.cleaned_data['correo'],
+            password=clave_temporal,
+            first_name=form.cleaned_data['nombres'],
+            last_name=form.cleaned_data['apellidos']
+        )
+        
+        # Dar acceso al admin de Django solo si se le asigna el rol ADMIN
+        roles_seleccionados = form.cleaned_data['roles']
+        if roles_seleccionados.filter(nombre='ADMIN').exists():
+            user.is_staff = True
+            user.save()
+
+        # 3. Vincular el Funcionario al User y forzar estado PENDIENTE
+        funcionario = form.save(commit=False)
+        funcionario.user = user
+        funcionario.estado = 'PENDIENTE'
+        funcionario.debe_cambiar_clave = True
+        funcionario.save()
+        
+        # 4. Guardar la relación ManyToMany de los roles
+        funcionario.roles.set(roles_seleccionados)
+        
+        # 5. Mostrar la clave generada al Administrador (En producción esto se envía por correo)
+        messages.success(self.request, f"Funcionario registrado con éxito.")
+        messages.warning(self.request, f"Credencial temporal para {user.username}: {clave_temporal} (Copie esta clave y entréguesela al funcionario).")
+        
+        return super().form_valid(form)
