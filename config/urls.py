@@ -52,6 +52,16 @@ urlpatterns = [
     path('actividades/<int:pk>/evidencia/', views.adjuntar_evidencia_view, name='adjuntar_evidencia'),
     path('verificacion/', views.bandeja_verificacion_view, name='bandeja_verificacion'),
     path('verificacion/<int:pk>/dictaminar/', views.dictaminar_actividad_view, name='dictaminar_actividad'),
+
+    # Seguridad de Cuentas (Primer acceso y Recuperación)
+    path('seguridad/activar-cuenta/', views.cambiar_clave_obligatorio_view, name='cambiar_clave_obligatorio'),
+    path('seguridad/recuperar-clave/', views.recuperar_clave_view, name='recuperar_clave'),
+
+    # Seguridad de Cuentas (Primer acceso y Flujo de 3 pasos de Recuperación)
+    path('seguridad/activar-cuenta/', views.cambiar_clave_obligatorio_view, name='cambiar_clave_obligatorio'),
+    path('seguridad/recuperar-clave/', views.recuperar_clave_view, name='recuperar_clave'),
+    path('seguridad/verificar-codigo/', views.verificar_codigo_view, name='verificar_codigo_recuperacion'),
+    path('seguridad/nueva-clave/', views.nueva_clave_recuperacion_view, name='nueva_clave_recuperacion'),
 ]
 
 if settings.DEBUG:

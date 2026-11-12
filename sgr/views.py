@@ -29,6 +29,9 @@ from .models import Funcionario
 from .forms import FuncionarioCreateForm
 from .models import Evidencia
 from .forms import ActividadRegistroForm, SubirEvidenciaForm
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.core.mail import send_mail, get_connection
+from decouple import config
 
 
 def login_institucional(request):
@@ -62,6 +65,9 @@ def login_institucional(request):
                     usuario=func, modulo='Seguridad', accion='Inicio de Sesión', detalle='Ingreso exitoso al SGR'
                 )
             login(request, user)
+            if func and func.debe_cambiar_clave:
+                messages.warning(request, "Por seguridad institucional, debe definir su contraseña personal definitiva antes de continuar.")
+                return redirect('cambiar_clave_obligatorio')
             return redirect('dashboard_inicio')
         else:
             if func:
@@ -637,3 +643,209 @@ def dictaminar_actividad_view(request, pk):
             f"Dictamen registrado: Actividad {act.codigo} marcada como '{act.get_estado_verificacion_display()}'."
         )
     return redirect('bandeja_verificacion')
+
+# ==============================================================================
+# SEGURIDAD: ACTIVACIÓN EN PRIMER LOGIN Y RECUPERACIÓN DE CONTRASEÑA
+# ==============================================================================
+
+@login_required(login_url='login')
+def cambiar_clave_obligatorio_view(request):
+    func = getattr(request.user, 'funcionario', None)
+
+    if request.method == 'POST':
+        nueva_clave = request.POST.get('nueva_clave', '').strip()
+        confirmar_clave = request.POST.get('confirmar_clave', '').strip()
+
+        if len(nueva_clave) < 8:
+            messages.error(request, "La nueva contraseña debe tener al menos 8 caracteres.")
+        elif nueva_clave != confirmar_clave:
+            messages.error(request, "Las contraseñas ingresadas no coinciden.")
+        elif nueva_clave == 'muni2026':
+            messages.error(request, "No puede utilizar la contraseña genérica de demostración. Elija una personal.")
+        else:
+            # Guardar contraseña con hash criptográfico seguro de Django
+            user = request.user
+            user.set_password(nueva_clave)
+            user.save()
+            # Mantener la sesión activa tras cambiar la contraseña
+            update_session_auth_hash(request, user)
+
+            if func:
+                func.debe_cambiar_clave = False
+                func.estado = 'ACTIVO'
+                func.save()
+                BitacoraAuditoria.objects.create(
+                    usuario=func,
+                    modulo='Seguridad',
+                    accion='Activación de Cuenta / Cambio de Clave',
+                    detalle='El funcionario estableció su contraseña definitiva y activó su cuenta.'
+                )
+
+            messages.success(request, "¡Cuenta activada con éxito! Su contraseña definitiva ha sido guardada.")
+            return redirect('dashboard_inicio')
+
+    return render(request, 'cambiar_clave_obligatorio.html', {'funcionario': func})
+
+
+# ==============================================================================
+# FLUJO DE 3 PASOS: RECUPERACIÓN DE CONTRASEÑA CON CÓDIGO AL CORREO
+# ==============================================================================
+
+def enviar_correo_institucional(destinatario, asunto, cuerpo):
+    """Envía el correo usando la configuración de Django o conexión nativa SMTP."""
+    remitente = config('EMAIL_HOST_USER')
+    clave = config('EMAIL_HOST_PASSWORD')
+
+    try:
+        # En Django 6.1 con MAILERS definido, send_mail usa automáticamente MAILERS['default']
+        send_mail(
+            subject=asunto,
+            message=cuerpo,
+            from_email=remitente,
+            recipient_list=[destinatario],
+            fail_silently=False,
+        )
+    except Exception:
+        # Respaldo directo con librería estándar de Python por si MAILERS da conflicto
+        import smtplib
+        from email.mime.text import MIMEText
+
+        msg = MIMEText(cuerpo, 'plain', 'utf-8')
+        msg['Subject'] = asunto
+        msg['From'] = f"SGR Municipalidad de La Serena <{remitente}>"
+        msg['To'] = destinatario
+
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(remitente, clave)
+            server.send_message(msg)
+
+
+def recuperar_clave_view(request):
+    """PASO 1: El usuario ingresa su correo o usuario y recibe un código de 6 dígitos."""
+    if request.method == 'POST':
+        identificador = request.POST.get('identificador', '').strip()
+        func = Funcionario.objects.filter(
+            Q(user__username__iexact=identificador) | Q(correo__iexact=identificador)
+        ).select_related('user').first()
+
+        request.session['reset_identificador'] = identificador
+        request.session.pop('reset_autorizado_id', None)
+
+        if func:
+            codigo = f"{random.randint(100000, 999999)}"
+            func.codigo_recuperacion = codigo
+            func.codigo_expiracion = timezone.now() + timezone.timedelta(minutes=10)
+            func.save()
+
+            asunto = "Código de Recuperación de Contraseña | SGR Municipalidad de La Serena"
+            mensaje = (
+                f"Hola {func.nombre_completo},\n\n"
+                f"Se ha solicitado restablecer su contraseña en el Sistema de Gestión de Resultados (SGR).\n\n"
+                f"Su código de verificación de un solo uso es: {codigo}\n\n"
+                f"Este código tiene una vigencia de 10 minutos. Si usted no realizó esta solicitud, ignore este mensaje.\n\n"
+                f"Coordinación de Delegaciones\nIlustre Municipalidad de La Serena"
+            )
+            try:
+                enviar_correo_institucional(func.correo, asunto, mensaje)
+            except Exception as e:
+                print(f"\n=== ERROR SMTP GMAIL: {e} ===\n")
+                messages.error(request, f"Error SMTP: {e}")
+                return render(request, 'recuperar_clave.html')
+
+            BitacoraAuditoria.objects.create(
+                usuario=func,
+                modulo='Seguridad',
+                accion='Envío Código Recuperación',
+                detalle=f"Se envió código de verificación al correo {func.correo}."
+            )
+
+        messages.info(request, "Hemos enviado un código de 6 dígitos a su correo electrónico registrado.")
+        return redirect('verificar_codigo_recuperacion')
+
+    return render(request, 'recuperar_clave.html')
+
+
+def verificar_codigo_view(request):
+    """PASO 2: El usuario ingresa el código que le llegó al correo."""
+    identificador = request.session.get('reset_identificador')
+    if not identificador:
+        messages.warning(request, "Primero debe ingresar su correo institucional.")
+        return redirect('recuperar_clave')
+
+    if request.method == 'POST':
+        codigo_ingresado = request.POST.get('codigo', '').strip()
+        func = Funcionario.objects.filter(
+            Q(user__username__iexact=identificador) | Q(correo__iexact=identificador)
+        ).select_related('user').first()
+
+        if (
+            func
+            and func.codigo_recuperacion
+            and func.codigo_recuperacion == codigo_ingresado
+            and func.codigo_expiracion
+            and func.codigo_expiracion > timezone.now()
+        ):
+            func.codigo_recuperacion = None
+            func.codigo_expiracion = None
+            func.save()
+
+            request.session['reset_autorizado_id'] = func.id
+            messages.success(request, "Código verificado correctamente. Ahora puede ingresar su nueva contraseña.")
+            return redirect('nueva_clave_recuperacion')
+        else:
+            messages.error(request, "Código incorrecto o expirado. Se ha rechazado el acceso al cambio de contraseña.")
+
+    return render(request, 'verificar_codigo.html')
+
+
+def nueva_clave_recuperacion_view(request):
+    """PASO 3: Solo entra aquí si el código fue validado en el Paso 2."""
+    func_id = request.session.get('reset_autorizado_id')
+    if not func_id:
+        messages.error(request, "Acceso denegado. Debe validar el código enviado a su correo primero.")
+        return redirect('recuperar_clave')
+
+    func = get_object_or_404(Funcionario, id=func_id)
+
+    if request.method == 'POST':
+        nueva_clave = request.POST.get('nueva_clave', '').strip()
+        confirmar_clave = request.POST.get('confirmar_clave', '').strip()
+
+        if len(nueva_clave) < 8:
+            messages.error(request, "La contraseña debe tener al menos 8 caracteres.")
+        elif nueva_clave != confirmar_clave:
+            messages.error(request, "Las contraseñas no coinciden.")
+        else:
+            func.user.set_password(nueva_clave)
+            func.user.save()
+
+            func.debe_cambiar_clave = False
+            func.estado = 'ACTIVO'
+            func.intentos_fallidos = 0
+            func.bloqueado_hasta = None
+            func.save()
+
+            request.session.pop('reset_autorizado_id', None)
+            request.session.pop('reset_identificador', None)
+
+            try:
+                enviar_correo_institucional(
+                    func.correo,
+                    "Confirmación de Cambio de Contraseña | SGR La Serena",
+                    f"Hola {func.nombre_completo},\n\nSu contraseña del Sistema SGR ha sido actualizada exitosamente."
+                )
+            except Exception:
+                pass
+
+            BitacoraAuditoria.objects.create(
+                usuario=func,
+                modulo='Seguridad',
+                accion='Contraseña Restablecida por Código',
+                detalle='El usuario restableció su contraseña exitosamente mediante código de correo.'
+            )
+
+            messages.success(request, "¡Su contraseña ha sido actualizada con éxito! Ya puede iniciar sesión.")
+            return redirect('login')
+
+    return render(request, 'nueva_clave_recuperacion.html', {'funcionario': func})

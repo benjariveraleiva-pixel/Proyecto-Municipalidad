@@ -105,6 +105,8 @@ class Funcionario(models.Model):
     debe_cambiar_clave = models.BooleanField(default=False)
     intentos_fallidos = models.PositiveIntegerField(default=0)
     bloqueado_hasta = models.DateTimeField(null=True, blank=True)
+    codigo_recuperacion = models.CharField(max_length=6, null=True, blank=True)
+    codigo_expiracion = models.DateTimeField(null=True, blank=True)
     ultimo_acceso = models.DateTimeField(null=True, blank=True)
 
     @property
