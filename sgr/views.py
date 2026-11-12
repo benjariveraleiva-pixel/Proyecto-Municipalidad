@@ -27,6 +27,8 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.contrib import messages
 from .models import Funcionario
 from .forms import FuncionarioCreateForm
+from .models import Evidencia
+from .forms import ActividadRegistroForm, SubirEvidenciaForm
 
 
 def login_institucional(request):
@@ -477,3 +479,161 @@ class FuncionarioCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView)
         messages.warning(self.request, f"Credencial temporal para {user.username}: {clave_temporal} (Copie esta clave y entréguesela al funcionario).")
         
         return super().form_valid(form)
+
+# ==============================================================================
+# MÓDULO: REGISTRO DE ACTIVIDADES, EVIDENCIAS Y BANDEJA DEL VERIFICADOR
+# ==============================================================================
+
+@login_required(login_url='login')
+def actividades_list_view(request):
+    func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+
+    if request.method == 'POST':
+        form = ActividadRegistroForm(request.POST, request.FILES)
+        if form.is_valid():
+            act = form.save(commit=False)
+            act.funcionario_autor = func_actual
+            act.estado_verificacion = 'PENDIENTE'
+            if not act.responsable_tubo_id:
+                act.responsable_tubo = func_actual
+            act.save()
+
+            # Si adjuntó evidencia al momento de crear la actividad
+            archivo = form.cleaned_data.get('archivo_evidencia')
+            if archivo:
+                Evidencia.objects.create(
+                    actividad=act,
+                    archivo=archivo,
+                    autor=func_actual,
+                    observacion=form.cleaned_data.get('observacion_evidencia') or 'Evidencia inicial'
+                )
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Actividades',
+                accion='Registro de Actividad',
+                detalle=f"Se registró la actividad {act.codigo} asociada a la meta {act.meta_asignada.meta.codigo}"
+            )
+            messages.success(request, f"Actividad {act.codigo} registrada y enviada a revisión del Verificador.")
+            return redirect('actividades_list')
+        else:
+            messages.error(request, "Error al registrar la actividad. Verifique los campos y el archivo adjunto.")
+    else:
+        form = ActividadRegistroForm(initial={'responsable_tubo': func_actual})
+
+    estado_filtro = request.GET.get('estado', '')
+    actividades = Actividad.objects.select_related(
+        'funcionario_autor', 'meta_asignada__meta', 'territorio', 'verificado_por'
+    ).prefetch_related('evidencias').order_by('-id')
+
+    if estado_filtro:
+        actividades = actividades.filter(estado_verificacion=estado_filtro)
+
+    return render(request, 'actividades_list.html', {
+        'form': form,
+        'form_evidencia': SubirEvidenciaForm(),
+        'actividades': actividades,
+        'estados_verificacion': Actividad.ESTADOS_VERIFICACION,
+        'estado_filtro': estado_filtro,
+    })
+
+
+@login_required(login_url='login')
+def adjuntar_evidencia_view(request, pk):
+    act = get_object_or_404(Actividad, pk=pk)
+    func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+
+    # Regla municipal: una actividad aprobada queda bloqueada
+    if act.bloqueada_edicion:
+        messages.error(request, f"La actividad {act.codigo} ya fue aprobada y se encuentra bloqueada contra modificaciones.")
+        return redirect('actividades_list')
+
+    if request.method == 'POST':
+        form = SubirEvidenciaForm(request.POST, request.FILES)
+        if form.is_valid():
+            ev = form.save(commit=False)
+            ev.actividad = act
+            ev.autor = func_actual
+            ev.save()
+
+            # Si el verificador había pedido antecedentes, al subir evidencia vuelve a PENDIENTE
+            if act.estado_verificacion in ['SOLICITUD_ANTECEDENTES', 'RECHAZADA']:
+                act.estado_verificacion = 'PENDIENTE'
+                act.save()
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Evidencias',
+                accion='Carga de Evidencia',
+                detalle=f"Se adjuntó evidencia {ev.codigo} a la actividad {act.codigo}"
+            )
+            messages.success(request, f"Evidencia {ev.codigo} adjuntada correctamente a la actividad {act.codigo}.")
+        else:
+            messages.error(request, "Archivo inválido. Verifique que sea imagen/PDF y pese menos de 10 MB.")
+    return redirect('actividades_list')
+
+
+@login_required(login_url='login')
+def bandeja_verificacion_view(request):
+    estado_filtro = request.GET.get('estado', 'PENDIENTE')
+    funcionario_filtro = request.GET.get('funcionario', '')
+
+    actividades = Actividad.objects.select_related(
+        'funcionario_autor', 'meta_asignada__meta', 'territorio', 'verificado_por'
+    ).prefetch_related('evidencias').order_by('-fecha_registro')
+
+    if estado_filtro and estado_filtro != 'TODOS':
+        actividades = actividades.filter(estado_verificacion=estado_filtro)
+    if funcionario_filtro:
+        actividades = actividades.filter(funcionario_autor_id=funcionario_filtro)
+
+    # Contadores rápidos para las tarjetas del Verificador
+    resumen = {
+        'pendientes': Actividad.objects.filter(estado_verificacion='PENDIENTE').count(),
+        'ponderan': Actividad.objects.filter(estado_verificacion='APROBADA_PONDERA').count(),
+        'no_ponderan': Actividad.objects.filter(estado_verificacion='APROBADA_NO_PONDERA').count(),
+        'antecedentes': Actividad.objects.filter(estado_verificacion='SOLICITUD_ANTECEDENTES').count(),
+        'rechazadas': Actividad.objects.filter(estado_verificacion='RECHAZADA').count(),
+    }
+
+    return render(request, 'verificacion_bandeja.html', {
+        'actividades': actividades,
+        'estados_verificacion': Actividad.ESTADOS_VERIFICACION,
+        'estado_filtro': estado_filtro,
+        'funcionario_filtro': funcionario_filtro,
+        'funcionarios': Funcionario.objects.all(),
+        'resumen': resumen,
+    })
+
+
+@login_required(login_url='login')
+def dictaminar_actividad_view(request, pk):
+    if request.method == 'POST':
+        act = get_object_or_404(Actividad, pk=pk)
+        func_verificador = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+
+        decision = request.POST.get('decision')
+        observacion = request.POST.get('observacion_verificador', '').strip()
+
+        if decision in ['SOLICITUD_ANTECEDENTES', 'RECHAZADA'] and not observacion:
+            messages.error(request, f"Debe escribir una observación indicando el motivo al rechazar o solicitar antecedentes en {act.codigo}.")
+            return redirect('bandeja_verificacion')
+
+        estado_anterior = act.get_estado_verificacion_display()
+        act.estado_verificacion = decision
+        act.observacion_verificador = observacion
+        act.verificado_por = func_verificador
+        act.fecha_verificacion = timezone.now()
+        act.save()
+
+        BitacoraAuditoria.objects.create(
+            usuario=func_verificador,
+            modulo='Verificación',
+            accion=f"Dictamen: {act.get_estado_verificacion_display()}",
+            detalle=f"Actividad {act.codigo} pasó de '{estado_anterior}' a '{act.get_estado_verificacion_display()}'. Obs: {observacion or 'Sin observaciones'}"
+        )
+        messages.success(
+            request,
+            f"Dictamen registrado: Actividad {act.codigo} marcada como '{act.get_estado_verificacion_display()}'."
+        )
+    return redirect('bandeja_verificacion')

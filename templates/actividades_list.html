@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-list-check me-2"></i>Registro de Actividades y Evidencias</h4>
+            <small class="text-muted">Ingrese sus gestiones diarias, vincúlelas a su meta trimestral y adjunte el archivo de evidencia</small>
+        </div>
+        <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevaActividad">
+            <i class="bi bi-plus-circle-fill"></i> Registrar Nueva Actividad
+        </button>
+    </div>
+
+    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevaActividad">
+        <form method="post" enctype="multipart/form-data" class="row g-3">
+            {% csrf_token %}
+            <div class="col-md-3"><label class="small fw-bold">Fecha Actividad</label>{{ form.fecha_actividad }}</div>
+            <div class="col-md-5"><label class="small fw-bold">Meta Asignada a la que Aporta</label>{{ form.meta_asignada }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Hito Asociado (Opcional)</label>{{ form.hito }}</div>
+
+            <div class="col-md-4"><label class="small fw-bold">Tipo de Actividad</label>{{ form.tipo_actividad }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Origen</label>{{ form.origen }}</div>
+            <div class="col-md-5"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
+
+            <div class="col-md-3"><label class="small fw-bold">Vecino Registrado (Opcional)</label>{{ form.vecino_solicitante }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Nombre Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
+            <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
+
+            <div class="col-md-12"><label class="small fw-bold">Descripción de la Gestión / Actividad Realizada</label>{{ form.descripcion }}</div>
+
+            <!-- Evidencia Inicial -->
+            <div class="col-md-6 p-3 rounded bg-light border">
+                <label class="small fw-bold d-block mb-1" style="color: var(--muni-granate);"><i class="bi bi-paperclip me-1"></i>{{ form.archivo_evidencia.label }}</label>
+                {{ form.archivo_evidencia }}
+            </div>
+            <div class="col-md-6 p-3 rounded bg-light border">
+                <label class="small fw-bold d-block mb-1">{{ form.observacion_evidencia.label }}</label>
+                {{ form.observacion_evidencia }}
+            </div>
+
+            <!-- Opciones de Tubo -->
+            <div class="col-md-3 d-flex align-items-center">
+                <div class="form-check mt-3">
+                    {{ form.ingresa_al_tubo }}
+                    <label class="form-check-label small fw-bold">¿Ingresar también al Tubo?</label>
+                </div>
+            </div>
+            <div class="col-md-3"><label class="small fw-bold">Responsable Seguimiento</label>{{ form.responsable_tubo }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Área de Apoyo</label>{{ form.area_apoyo }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Fecha Compromiso</label>{{ form.fecha_compromiso }}</div>
+
+            <div class="col-12 text-end">
+                <button type="submit" class="btn-muni"><i class="bi bi-send-check-fill"></i> Guardar y Enviar a Verificación</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Listado de Actividades y Carga de Evidencias -->
+<div class="muni-card animate-fade-up delay-1">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold mb-0">Historial de Actividades y Estado de Revisión</h6>
+        <form method="get" class="d-flex gap-2">
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los estados de verificación</option>
+                {% for cod, label in estados_verificacion %}
+                    <option value="{{ cod }}" {% if estado_filtro == cod %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / Fecha</th>
+                    <th>Funcionario / Meta</th>
+                    <th>Actividad y Solicitante</th>
+                    <th>Evidencias Adjuntas</th>
+                    <th>Estado Verificación</th>
+                    <th>Subir / Complementar Evidencia</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for act in actividades %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ act.codigo }}</div>
+                        <small class="text-muted">{{ act.fecha_actividad|date:"d/m/Y" }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.funcionario_autor.nombre_completo }}</div>
+                        <small class="text-muted">{{ act.meta_asignada.meta.nombre }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.tipo_actividad }}</div>
+                        <small class="d-block text-muted">{{ act.descripcion }}</small>
+                        <small class="text-secondary"><i class="bi bi-person me-1"></i>{{ act.solicitante_nombre }} ({{ act.territorio.nombre }})</small>
+                    </td>
+                    <td>
+                        {% for ev in act.evidencias.all %}
+                            <div class="mb-1">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="badge bg-light text-dark border text-decoration-none">
+                                    <i class="bi bi-file-earmark-arrow-down-fill text-danger me-1"></i>{{ ev.codigo }}
+                                </a>
+                            </div>
+                        {% empty %}
+                            <span class="badge bg-warning text-dark">Sin evidencia</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        {% if act.estado_verificacion == 'APROBADA_PONDERA' %}
+                            <span class="badge-estado estado-realizado"><i class="bi bi-check-circle-fill me-1"></i>Aprobada y Pondera</span>
+                        {% elif act.estado_verificacion == 'APROBADA_NO_PONDERA' %}
+                            <span class="badge bg-info text-dark">Aprobada (No Pondera)</span>
+                        {% elif act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}
+                            <span class="badge-estado estado-proceso"><i class="bi bi-exclamation-triangle-fill me-1"></i>Solicita Antecedentes</span>
+                        {% elif act.estado_verificacion == 'RECHAZADA' %}
+                            <span class="badge-estado estado-pendiente">Rechazada</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Pendiente Revisión</span>
+                        {% endif %}
+
+                        {% if act.observacion_verificador %}
+                            <div class="small text-muted mt-1"><strong>Obs Verificador:</strong> {{ act.observacion_verificador }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if act.bloqueada_edicion %}
+                            <span class="text-muted small"><i class="bi bi-lock-fill"></i> Registro Aprobado y Bloqueado</span>
+                        {% else %}
+                            <form method="post" action="{% url 'adjuntar_evidencia' act.id %}" enctype="multipart/form-data" class="d-flex flex-column gap-1">
+                                {% csrf_token %}
+                                <input type="file" name="archivo" class="form-control form-control-sm" required>
+                                <div class="d-flex gap-1">
+                                    <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Comentario...">
+                                    <button type="submit" class="btn btn-sm text-white" style="background: var(--muni-crimson);">Subir</button>
+                                </div>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No hay actividades registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

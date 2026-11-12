@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Tarjetas Resumen de Verificación -->
+<div class="row g-3 mb-4 animate-fade-up">
+    <div class="col-md-3">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Pendientes de Revisión</small>
+            <h3 class="fw-extrabold mb-0 text-warning">{{ resumen.pendientes }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Aprobadas y Ponderan</small>
+            <h3 class="fw-extrabold mb-0 text-success">{{ resumen.ponderan }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Aprobadas (No Ponderan)</small>
+            <h3 class="fw-extrabold mb-0 text-info">{{ resumen.no_ponderan }}</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Con Solicitud Antecedentes</small>
+            <h3 class="fw-extrabold mb-0 text-danger">{{ resumen.antecedentes }}</h3>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-patch-check-fill me-2"></i>Bandeja del Verificador</h4>
+            <small class="text-muted">Auditoría de evidencias y decisión de ponderación para el cálculo del semáforo trimestral</small>
+        </div>
+
+        <form method="get" class="d-flex gap-2">
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios %}
+                    <option value="{{ f.id }}" {% if funcionario_filtro == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="TODOS" {% if estado_filtro == 'TODOS' %}selected{% endif %}>Todos los estados</option>
+                {% for cod, nombre in estados_verificacion %}
+                    <option value="{{ cod }}" {% if estado_filtro == cod %}selected{% endif %}>{{ nombre }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / Fecha</th>
+                    <th>Funcionario y Meta</th>
+                    <th>Detalle de la Gestión</th>
+                    <th>Evidencias para Auditar</th>
+                    <th>Estado Actual</th>
+                    <th>Dictamen del Verificador</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for act in actividades %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ act.codigo }}</div>
+                        <small class="text-muted">{{ act.fecha_actividad|date:"d/m/Y" }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-bold">{{ act.funcionario_autor.nombre_completo }}</div>
+                        <small class="d-block" style="color: var(--muni-crimson);">{{ act.meta_asignada.meta.nombre }}</small>
+                        <small class="text-muted">Avance actual: {{ act.meta_asignada.actividades_aprobadas_count }}/{{ act.meta_asignada.cantidad_objetivo }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.tipo_actividad }}</div>
+                        <small class="d-block text-muted">{{ act.descripcion }}</small>
+                        <small class="text-secondary">Solicitante: {{ act.solicitante_nombre }}</small>
+                    </td>
+                    <td>
+                        {% for ev in act.evidencias.all %}
+                            <div class="mb-1">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="btn btn-sm btn-outline-danger py-0 px-2">
+                                    <i class="bi bi-eye-fill me-1"></i>Ver {{ ev.codigo }}
+                                </a>
+                                <small class="d-block text-muted" style="font-size: 0.72rem;">{{ ev.observacion }}</small>
+                            </div>
+                        {% empty %}
+                            <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>Sin archivos adjuntos</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <span class="badge bg-dark">{{ act.get_estado_verificacion_display }}</span>
+                        {% if act.verificado_por %}
+                            <small class="d-block text-muted mt-1">Por: {{ act.verificado_por.nombre_completo }}</small>
+                        {% endif %}
+                    </td>
+                    <td style="min-width: 280px;">
+                        <form method="post" action="{% url 'dictaminar_actividad' act.id %}" class="d-flex flex-column gap-1">
+                            {% csrf_token %}
+                            <select name="decision" class="form-select form-select-sm fw-semibold">
+                                <option value="APROBADA_PONDERA" {% if act.estado_verificacion == 'APROBADA_PONDERA' %}selected{% endif %}>✅ Aprobar y Pondera (Suma a meta)</option>
+                                <option value="APROBADA_NO_PONDERA" {% if act.estado_verificacion == 'APROBADA_NO_PONDERA' %}selected{% endif %}>☑️ Aprobar y No Pondera</option>
+                                <option value="SOLICITUD_ANTECEDENTES" {% if act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}selected{% endif %}>⚠️ Solicitar Antecedentes</option>
+                                <option value="RECHAZADA" {% if act.estado_verificacion == 'RECHAZADA' %}selected{% endif %}>❌ Rechazar Actividad</option>
+                                <option value="ANULADA" {% if act.estado_verificacion == 'ANULADA' %}selected{% endif %}>🚫 Anular Registro</option>
+                            </select>
+                            <div class="d-flex gap-1">
+                                <input type="text" name="observacion_verificador" value="{{ act.observacion_verificador }}" class="form-control form-control-sm" placeholder="Observación o motivo...">
+                                <button type="submit" class="btn btn-sm text-white fw-bold px-3" style="background: var(--muni-crimson);">Dictaminar</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No hay actividades en este estado para verificar.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

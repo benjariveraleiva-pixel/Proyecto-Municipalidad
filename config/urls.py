@@ -46,6 +46,12 @@ urlpatterns = [
     path('hitos/', views.HitoListView.as_view(), name='hitos_list'),
     path('hitos/nuevo/', views.HitoCreateView.as_view(), name='hitos_crear'),
     path('hitos/<int:pk>/editar/', views.HitoUpdateView.as_view(), name='hitos_editar'),
+
+    # Módulo de Actividades, Evidencias y Verificación
+    path('actividades/', views.actividades_list_view, name='actividades_list'),
+    path('actividades/<int:pk>/evidencia/', views.adjuntar_evidencia_view, name='adjuntar_evidencia'),
+    path('verificacion/', views.bandeja_verificacion_view, name='bandeja_verificacion'),
+    path('verificacion/<int:pk>/dictaminar/', views.dictaminar_actividad_view, name='dictaminar_actividad'),
 ]
 
 if settings.DEBUG:
