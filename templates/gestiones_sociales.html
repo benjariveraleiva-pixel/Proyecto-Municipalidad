@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-people-fill me-2"></i>Gestiones Sociales (Casos DIDECO)
+            </h4>
+            <small class="text-muted">Flujo de 3 etapas: Visita Domiciliaria <i class="bi bi-arrow-right"></i> Informe Social <i class="bi bi-arrow-right"></i> Entrega de Beneficio</small>
+        </div>
+        <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevaSocial">
+            <i class="bi bi-plus-circle-fill me-1"></i>Ingresar Nuevo Caso
+        </button>
+    </div>
+
+    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevaSocial">
+        <form method="post" class="row g-3">
+            {% csrf_token %}
+            <input type="hidden" name="crear_gestion" value="1">
+            <div class="col-md-4">
+                <label class="small fw-bold">Vecino Solicitante *</label>
+                <select name="vecino" class="form-select form-select-sm" required>
+                    <option value="">Seleccione al vecino registrado...</option>
+                    {% for v in vecinos %}
+                        <option value="{{ v.id }}">{{ v.rut }} - {{ v.nombre_completo }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted" style="font-size: 0.7rem;">Si no aparece, debe registrarlo en "Vecinos y Juntas"</small>
+            </div>
+            <div class="col-md-8">
+                <label class="small fw-bold">Requerimiento o Problema *</label>
+                <input type="text" name="requerimiento" class="form-control form-control-sm" placeholder="Ej: Solicita mediagua por incendio, requiere pañales..." required>
+            </div>
+            <div class="col-md-3 mt-4">
+                <button type="submit" class="btn-muni w-100">Ingresar Caso</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Vecino / Territorio</th>
+                    <th>Requerimiento</th>
+                    <th>Demora</th>
+                    <th>Progreso (Las 3 Etapas)</th>
+                    <th>Actualizar Etapa</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for g in gestiones %}
+                    <tr>
+                        <td class="fw-bold">{{ g.codigo }}<br><small class="text-muted">{{ g.fecha_ingreso|date:"d/m/Y" }}</small></td>
+                        <td>
+                            <div class="fw-semibold">{{ g.vecino.nombre_completo }}</div>
+                            <small class="text-muted"><i class="bi bi-person-vcard me-1"></i>{{ g.vecino.rut }}</small><br>
+                            <span class="badge bg-light text-dark border mt-1">{{ g.territorio.nombre }}</span>
+                        </td>
+                        <td>{{ g.requerimiento }}</td>
+                        <td>
+                            <div class="text-center p-2 border rounded {% if g.dias_demora > 15 and g.estado != 'BENEFICIO_ENTREGADO' and g.estado != 'RECHAZADA' %}bg-danger text-white{% else %}bg-light{% endif %}">
+                                <h5 class="mb-0 fw-bold">{{ g.dias_demora }}</h5>
+                                <small style="font-size: 0.65rem;">DÍAS</small>
+                            </div>
+                        </td>
+                        <td style="min-width: 280px;">
+                            {% if g.estado == 'RECHAZADA' %}
+                                <div class="alert alert-danger p-2 mb-0 text-center"><i class="bi bi-x-circle-fill me-1"></i>Caso Rechazado / No Califica</div>
+                            {% else %}
+                                <div class="d-flex justify-content-between mb-1 small fw-bold">
+                                    <span class="{% if g.fecha_visita %}text-success{% else %}text-muted{% endif %}"><i class="bi {% if g.fecha_visita %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i> Visita</span>
+                                    <span class="{% if g.fecha_informe %}text-success{% else %}text-muted{% endif %}"><i class="bi {% if g.fecha_informe %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i> Informe</span>
+                                    <span class="{% if g.fecha_beneficio %}text-success{% else %}text-muted{% endif %}"><i class="bi {% if g.fecha_beneficio %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i> Beneficio</span>
+                                </div>
+                                <div class="progress" style="height: 10px;">
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: {% if g.fecha_beneficio %}100%{% elif g.fecha_informe %}66%{% elif g.fecha_visita %}33%{% else %}0%{% endif %};"></div>
+                                </div>
+                                <div class="mt-1 small text-muted text-center">{{ g.get_estado_display }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#modalEtapa{{ g.id }}">
+                                <i class="bi bi-pencil-square"></i> Fechas
+                            </button>
+
+                            <!-- Modal para actualizar etapas -->
+                            <div class="modal fade" id="modalEtapa{{ g.id }}" tabindex="-1">
+                                <div class="modal-dialog">
+                                    <div class="modal-content">
+                                        <form method="post" action="{% url 'actualizar_etapa_social' g.id %}">
+                                            {% csrf_token %}
+                                            <div class="modal-header">
+                                                <h6 class="modal-title fw-bold">Avanzar Caso {{ g.codigo }}</h6>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold text-success">Etapa 1: Fecha Visita Domiciliaria</label>
+                                                    <input type="date" name="fecha_visita" class="form-control" value="{{ g.fecha_visita|date:'Y-m-d' }}">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold text-success">Etapa 2: Fecha Informe Social</label>
+                                                    <input type="date" name="fecha_informe" class="form-control" value="{{ g.fecha_informe|date:'Y-m-d' }}">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-bold text-success">Etapa 3: Fecha Entrega Beneficio</label>
+                                                    <input type="date" name="fecha_beneficio" class="form-control" value="{{ g.fecha_beneficio|date:'Y-m-d' }}">
+                                                </div>
+                                                <div class="form-check text-danger mb-3 border p-2 rounded">
+                                                    <input class="form-check-input" type="checkbox" name="rechazar" value="SI" id="rechazar{{ g.id }}" {% if g.estado == 'RECHAZADA' %}checked{% endif %}>
+                                                    <label class="form-check-label small fw-bold" for="rechazar{{ g.id }}">Rechazar / No Califica</label>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small fw-bold">Observaciones</label>
+                                                    <textarea name="observaciones" class="form-control" rows="2">{{ g.observaciones }}</textarea>
+                                                </div>
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="submit" class="btn-muni w-100">Guardar Avance</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">No hay gestiones sociales registradas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

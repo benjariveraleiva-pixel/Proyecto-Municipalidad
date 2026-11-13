@@ -62,6 +62,12 @@ urlpatterns = [
     path('seguridad/recuperar-clave/', views.recuperar_clave_view, name='recuperar_clave'),
     path('seguridad/verificar-codigo/', views.verificar_codigo_view, name='verificar_codigo_recuperacion'),
     path('seguridad/nueva-clave/', views.nueva_clave_recuperacion_view, name='nueva_clave_recuperacion'),
+
+    path('gestiones-sociales/', views.gestiones_sociales_view, name='gestiones_sociales'),
+    path('reportes-bitacora/', views.reportes_bitacora_view, name='reportes_bitacora'),
+    path('reportes-bitacora/exportar/', views.exportar_reporte_csv, name='exportar_reporte_csv'),
+
+    path('gestiones-sociales/actualizar/<int:pk>/', views.actualizar_etapa_social, name='actualizar_etapa_social'),
 ]
 
 if settings.DEBUG:

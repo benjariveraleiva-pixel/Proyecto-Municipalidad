@@ -538,3 +538,63 @@ class BitacoraAuditoria(models.Model):
 
     def __str__(self):
         return f"[{self.fecha_hora.strftime('%d/%m/%Y %H:%M')}] {self.modulo}: {self.accion}"
+
+# ==============================================================================
+# 6. MÓDULO DE GESTIONES SOCIALES (LAS 3 ETAPAS)
+# ==============================================================================
+
+class GestionSocial(models.Model):
+    ESTADOS_GESTION = [
+        ('INGRESADA', 'Ingresada (Pendiente Visita)'),
+        ('VISITA_REALIZADA', 'Visita Realizada'),
+        ('INFORME_EMITIDO', 'Informe Emitido'),
+        ('BENEFICIO_ENTREGADO', 'Beneficio Entregado'),
+        ('RECHAZADA', 'Rechazada / No Califica'),
+    ]
+    
+    codigo = models.CharField(max_length=20, unique=True, editable=False)
+    fecha_ingreso = models.DateField(default=timezone.now)
+    vecino = models.ForeignKey(Vecino, on_delete=models.CASCADE, related_name='gestiones_sociales')
+    territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT)
+    asistente_social = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='casos_sociales')
+    requerimiento = models.TextField(help_text="Problema o solicitud inicial del vecino")
+
+    # Las 3 Etapas Críticas
+    fecha_visita = models.DateField(null=True, blank=True, help_text="Etapa 1: Visita Domiciliaria")
+    fecha_informe = models.DateField(null=True, blank=True, help_text="Etapa 2: Informe Social Emitido")
+    fecha_beneficio = models.DateField(null=True, blank=True, help_text="Etapa 3: Beneficio Entregado")
+
+    estado = models.CharField(max_length=30, choices=ESTADOS_GESTION, default='INGRESADA')
+    observaciones = models.TextField(blank=True)
+
+    def save(self, *args, **kwargs):
+        # Generar código automático
+        if not self.codigo:
+            ultimo = GestionSocial.objects.order_by('-id').first()
+            secuencia = (ultimo.id + 1) if ultimo else 1
+            self.codigo = f"GS-{secuencia:04d}"
+
+        # Actualizar estado automáticamente según las fechas ingresadas
+        if self.estado != 'RECHAZADA':
+            if self.fecha_beneficio:
+                self.estado = 'BENEFICIO_ENTREGADO'
+            elif self.fecha_informe:
+                self.estado = 'INFORME_EMITIDO'
+            elif self.fecha_visita:
+                self.estado = 'VISITA_REALIZADA'
+            else:
+                self.estado = 'INGRESADA'
+
+        super().save(*args, **kwargs)
+
+    @property
+    def dias_demora(self):
+        """Calcula los días transcurridos desde el ingreso hasta la entrega del beneficio (o hasta hoy si sigue abierto)."""
+        if self.fecha_ingreso:
+            fecha_fin = self.fecha_beneficio if self.fecha_beneficio else timezone.now().date()
+            demora = (fecha_fin - self.fecha_ingreso).days
+            return max(demora, 0)
+        return 0
+
+    def __str__(self):
+        return f"{self.codigo} - {self.vecino.nombre_completo}"

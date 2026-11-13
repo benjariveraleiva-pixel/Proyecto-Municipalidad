@@ -22,41 +22,53 @@
         </div>
     </div>
 
-    <!-- Formulario Real de Filtros GET -->
-    <form method="get" class="row g-3">
-        <div class="col-md-3">
-            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
-            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
-                {% for t in trimestres %}
-                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
-                {% endfor %}
-            </select>
+    <!-- Contenedor de Filtros y Buscador Separados -->
+    <div class="row g-3">
+        <!-- Filtros del Dashboard -->
+        <div class="col-md-9">
+            <form method="get" class="row g-3 m-0">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+                    <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for t in trimestres %}
+                            <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
+                    <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">Todos los funcionarios</option>
+                        {% for f in funcionarios_lista %}
+                            <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>
+                                {{ f.nombre_completo }} ({{ f.cargo.nombre }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
+                    <select name="territorio" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">Todos los territorios</option>
+                        {% for ter in territorios_lista %}
+                            <option value="{{ ter.id }}" {% if filtro_territorio == ter.id|stringformat:"s" %}selected{% endif %}>{{ ter.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
         </div>
+
+        <!-- Buscador Rápido conectado al Tubo de Compromisos -->
         <div class="col-md-3">
-            <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
-            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">Todos los funcionarios</option>
-                {% for f in funcionarios_lista %}
-                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>
-                        {{ f.nombre_completo }} ({{ f.cargo.nombre }})
-                    </option>
-                {% endfor %}
-            </select>
+            <form action="{% url 'tubo_compromisos' %}" method="get" class="m-0">
+                <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
+                <div class="input-group">
+                    <input type="text" name="q" class="form-control form-control-sm" placeholder="Código, RUT, nombre...">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Ir</button>
+                </div>
+            </form>
         </div>
-        <div class="col-md-3">
-            <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
-            <select name="territorio" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="">Todos los territorios</option>
-                {% for ter in territorios_lista %}
-                    <option value="{{ ter.id }}" {% if filtro_territorio == ter.id|stringformat:"s" %}selected{% endif %}>{{ ter.nombre }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
-            <input type="text" name="q" value="{{ filtro_q }}" class="form-control form-control-sm" placeholder="Código, RUT o solicitante...">
-        </div>
-    </form>
+    </div>
 </div>
 
 <!-- Tarjetas KPI Conectadas a Base de Datos -->

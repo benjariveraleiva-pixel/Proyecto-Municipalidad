@@ -64,7 +64,7 @@
                 </a>
             </li>
             <li>
-                <a href="#" class="sidebar-link">
+                <a href="{% url 'gestiones_sociales' %}" class="sidebar-link {% if request.resolver_match.url_name == 'gestiones_sociales' %}active{% endif %}">
                     <i class="bi bi-people-fill"></i>
                     <span>Gestiones Sociales</span>
                 </a>
@@ -84,7 +84,7 @@
                 </a>
             </li>
             <li>
-                <a href="#" class="sidebar-link">
+                <a href="{% url 'reportes_bitacora' %}" class="sidebar-link {% if request.resolver_match.url_name == 'reportes_bitacora' %}active{% endif %}">
                     <i class="bi bi-bar-chart-line-fill"></i>
                     <span>Reportes y Bitácora</span>
                 </a>
@@ -142,13 +142,13 @@
     <!-- ==================== CONTENIDO DINÁMICO ==================== -->
     <main class="muni-main">
         {% if messages %}
-    {% for message in messages %}
-        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show shadow-sm" role="alert">
-            <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-    {% endfor %}
-    {% endif %}
+            {% for message in messages %}
+                <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show shadow-sm" role="alert">
+                    <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
         {% block content %}
         {% endblock %}
     </main>

@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-flag-fill me-2"></i>Hitos Programados
+            </h4>
+            <small class="text-muted">Planificación, seguimiento de fechas clave y responsables por territorio</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'hitos_crear' %}" class="btn-muni text-decoration-none">
+                <i class="bi bi-plus-circle-fill me-1"></i>Programar Nuevo Hito
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="row g-2 mb-3 align-items-center pb-3 border-bottom">
+        <div class="col-md-8">
+            <div class="input-group">
+                <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" id="buscadorHitos" class="form-control" placeholder="Buscar por código (HT-0001), nombre, territorio o responsable..." oninput="filtrarTablaHitos()">
+            </div>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-light text-dark border" id="contadorHitos">
+                Mostrando {{ hitos|length }} hito(s)
+            </span>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni" id="tablaHitos">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Hito / Descripción</th>
+                    <th>Periodicidad</th>
+                    <th>Territorio / Delegación</th>
+                    <th>Vigencia</th>
+                    <th>Responsables</th>
+                    <th>Estado</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody id="cuerpoTablaHitos">
+                {% for h in hitos %}
+                    <tr class="fila-hito">
+                        <td class="fw-bold">{{ h.codigo }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ h.nombre }}</div>
+                            {% if h.descripcion %}<small class="text-muted">{{ h.descripcion|truncatechars:70 }}</small>{% endif %}
+                        </td>
+                        <td><span class="badge bg-light text-dark border">{{ h.periodicidad }}</span></td>
+                        <td>
+                            <div class="fw-semibold">{{ h.territorio.nombre }}</div>
+                            <small class="text-muted">{{ h.delegacion.nombre }}</small>
+                        </td>
+                        <td>
+                            <small class="d-block"><strong>Inicio:</strong> {{ h.fecha_inicio|date:"d/m/Y" }}</small>
+                            <small class="d-block text-muted"><strong>Término:</strong> {{ h.fecha_termino|date:"d/m/Y" }}</small>
+                        </td>
+                        <td>
+                            {% for resp in h.responsables.all %}
+                                <span class="badge bg-secondary mb-1">{{ resp.nombre_completo }}</span>
+                            {% empty %}
+                                <small class="text-muted">Sin asignar</small>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <span class="badge {% if h.estado == 'FINALIZADO' %}bg-success{% elif h.estado == 'VENCIDO' %}bg-danger{% elif h.estado == 'EN_EJECUCION' %}bg-primary{% else %}bg-dark{% endif %}">
+                                {{ h.get_estado_display }}
+                            </span>
+                        </td>
+                        <td>
+                            <a href="{% url 'hitos_editar' h.id %}" class="btn btn-sm btn-outline-secondary">
+                                <i class="bi bi-pencil-square"></i> Editar
+                            </a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            No hay hitos programados registrados. Haga clic en "Programar Nuevo Hito" para comenzar.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    function filtrarTablaHitos() {
+        var filtro = document.getElementById("buscadorHitos").value.toLowerCase().trim();
+        var filas = document.querySelectorAll("#cuerpoTablaHitos tr.fila-hito");
+        var visibles = 0;
+
+        filas.forEach(function(fila) {
+            if (fila.textContent.toLowerCase().indexOf(filtro) > -1) {
+                fila.style.display = "";
+                visibles++;
+            } else {
+                fila.style.display = "none";
+            }
+        });
+
+        var contador = document.getElementById("contadorHitos");
+        if (contador) {
+            contador.textContent = "Mostrando " + visibles + " hito(s)";
+        }
+    }
+</script>
+{% endblock %}

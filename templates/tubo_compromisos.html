@@ -5,7 +5,7 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-kanban-fill me-2"></i>Tubo de Gestión de Compromisos</h4>
-            <small class="text-muted">Seguimiento colectivo de solicitudes y transiciones de estado por delegación</small>
+            <small class="text-muted">Seguimiento colectivo de solicitudes, reasignación de responsables y transiciones de estado por delegación</small>
         </div>
         <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevoCompromiso">
             <i class="bi bi-plus-circle-fill"></i> Ingresar Nuevo Compromiso
@@ -34,25 +34,31 @@
 </div>
 
 <div class="muni-card animate-fade-up delay-1">
-    <form method="get" class="row g-2 mb-3">
-        <div class="col-md-5">
-            <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Buscar por código (AC-0001), RUT o solicitante...">
+    <form method="get" action="{% url 'tubo_compromisos' %}" class="row g-2 mb-3 align-items-center pb-3 border-bottom">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" id="buscadorTubo" name="q" value="{{ q }}" class="form-control" placeholder="Buscar por código (AC-0001), RUT (con o sin puntos) o vecino..." oninput="programarFiltroTubo()">
+                <button type="button" class="btn btn-outline-secondary" onclick="limpiarBuscadorTubo()">Limpiar</button>
+            </div>
         </div>
         <div class="col-md-4">
-            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+            <select name="estado" class="form-select" onchange="this.form.submit()">
                 <option value="">Todos los estados del Tubo</option>
                 {% for cod, nombre in estados_tubo %}
                     <option value="{{ cod }}" {% if estado_filtro == cod %}selected{% endif %}>{{ nombre }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-3">
-            <button type="submit" class="btn-muni-outline w-100 py-1">Filtrar Tubo</button>
+        <div class="col-md-2 text-end">
+            <span class="badge bg-light text-dark border" id="contadorResultados">
+                Mostrando {{ compromisos|length }} registro(s)
+            </span>
         </div>
     </form>
 
     <div class="table-responsive">
-        <table class="table-muni">
+        <table class="table-muni" id="tablaTubo">
             <thead>
                 <tr>
                     <th>Código</th>
@@ -61,42 +67,112 @@
                     <th>Responsable / Apoyo</th>
                     <th>Compromiso</th>
                     <th>Estado Actual</th>
-                    <th>Cambiar Estado</th>
+                    <th>Actualizar Estado / Reasignar</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="cuerpoTablaTubo">
                 {% for c in compromisos %}
-                    <tr>
+                    <tr class="fila-dato">
                         <td class="fw-bold">{{ c.codigo }}</td>
                         <td>
                             <div class="fw-semibold">{{ c.solicitante_nombre }}</div>
                             <small class="text-muted">{{ c.territorio.nombre }}</small>
+                            {% if c.solicitante_rut %}<small class="d-block text-secondary"><i class="bi bi-person-vcard me-1"></i>{{ c.solicitante_rut }}</small>{% endif %}
                         </td>
-                        <td>{{ c.descripcion }}</td>
+                        <td>
+                            <div>{{ c.descripcion }}</div>
+                            {% if c.avances_observaciones %}<small class="text-muted d-block mt-1"><i class="bi bi-chat-left-text me-1"></i>{{ c.avances_observaciones }}</small>{% endif %}
+                        </td>
                         <td>
                             <div class="fw-semibold">{{ c.responsable_tubo.nombre_completo }}</div>
                             <small class="text-muted">{{ c.area_apoyo|default:"Gestión interna" }}</small>
                         </td>
                         <td>{{ c.fecha_compromiso|date:"d/m/Y"|default:"-" }}</td>
                         <td><span class="badge bg-dark">{{ c.get_estado_tubo_display }}</span></td>
-                        <td>
-                            <form method="post" action="{% url 'cambiar_estado_compromiso' c.id %}" class="d-flex gap-1">
+                        <td style="min-width: 390px;">
+                            <form method="post" action="{% url 'cambiar_estado_compromiso' c.id %}" class="d-flex flex-wrap gap-1">
                                 {% csrf_token %}
-                                <select name="nuevo_estado" class="form-select form-select-sm" style="width: 135px;">
+                                <select name="nuevo_estado" class="form-select form-select-sm" style="width: 120px;" title="Estado">
                                     {% for cod, label in estados_tubo %}
                                         <option value="{{ cod }}" {% if c.estado_tubo == cod %}selected{% endif %}>{{ label }}</option>
                                     {% endfor %}
                                 </select>
-                                <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Avance..." style="width: 120px;">
+                                <select name="nuevo_responsable" class="form-select form-select-sm" style="width: 140px;" title="Responsable">
+                                    {% for f in funcionarios_tubo %}
+                                        <option value="{{ f.id }}" {% if c.responsable_tubo_id == f.id %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Motivo / Avance..." style="width: 130px;" required>
                                 <button type="submit" class="btn btn-sm btn-danger" style="background: var(--muni-crimson);">OK</button>
                             </form>
                         </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="7" class="text-center text-muted py-4">No hay compromisos registrados.</td></tr>
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-4">
+                            No se encontraron compromisos registrados.
+                        </td>
+                    </tr>
                 {% endfor %}
+                <tr id="filaSinResultados" style="display: none;">
+                    <td colspan="7" class="text-center text-muted py-4">
+                        <i class="bi bi-search me-1"></i>No existen coincidencias para la búsqueda ingresada.
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+    var timerBusqueda = null;
+
+    function normalizarTexto(str) {
+        return str
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\./g, "")
+            .replace(/-/g, "")
+            .trim();
+    }
+
+    function programarFiltroTubo() {
+        clearTimeout(timerBusqueda);
+        timerBusqueda = setTimeout(filtrarEnVivo, 150);
+    }
+
+    function filtrarEnVivo() {
+        var input = document.getElementById("buscadorTubo");
+        var filtro = normalizarTexto(input.value);
+        var filas = document.querySelectorAll("#cuerpoTablaTubo tr.fila-dato");
+        var filaVacia = document.getElementById("filaSinResultados");
+        var contador = document.getElementById("contadorResultados");
+        var visibles = 0;
+
+        filas.forEach(function(fila) {
+            var textoNormalizado = normalizarTexto(fila.textContent);
+            if (textoNormalizado.indexOf(filtro) > -1) {
+                fila.style.display = "";
+                visibles++;
+            } else {
+                fila.style.display = "none";
+            }
+        });
+
+        if (contador) {
+            contador.textContent = "Mostrando " + visibles + " registro(s)";
+        }
+
+        if (filaVacia) {
+            filaVacia.style.display = (visibles === 0 && filas.length > 0) ? "" : "none";
+        }
+    }
+
+    function limpiarBuscadorTubo() {
+        var input = document.getElementById("buscadorTubo");
+        input.value = "";
+        filtrarEnVivo();
+    }
+</script>
 {% endblock %}

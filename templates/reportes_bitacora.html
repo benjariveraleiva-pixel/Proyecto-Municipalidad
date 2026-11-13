@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-bar-chart-line-fill me-2"></i>Reportes Ejecutivos y Bitácora de Auditoría
+            </h4>
+            <small class="text-muted">Trazabilidad completa de acciones institucionales, historial de cambios y exportación a Excel (CSV)</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'exportar_reporte_csv' %}?tipo=actividades" class="btn-muni text-decoration-none">
+                <i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Descargar Reporte Actividades (CSV)
+            </a>
+            <a href="{% url 'exportar_reporte_csv' %}?tipo=bitacora" class="btn-muni-outline text-decoration-none">
+                <i class="bi bi-shield-check me-1"></i>Descargar Bitácora Auditoría (CSV)
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Resumen Ejecutivo -->
+<div class="row g-3 mb-4 animate-fade-up delay-1">
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">Total Actividades</small>
+            <h3 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-granate);">{{ resumen.total_actividades }}</h3>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">Aprobadas y Ponderan</small>
+            <h3 class="fw-extrabold mb-0 mt-1 text-success">{{ resumen.aprobadas }}</h3>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">En Tubo Gestión</small>
+            <h3 class="fw-extrabold mb-0 mt-1">{{ resumen.compromisos_tubo }}</h3>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">Cartas Registradas</small>
+            <h3 class="fw-extrabold mb-0 mt-1">{{ resumen.cartas }}</h3>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">Hitos Programados</small>
+            <h3 class="fw-extrabold mb-0 mt-1">{{ resumen.hitos }}</h3>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="muni-card text-center p-3">
+            <small class="text-muted fw-semibold d-block">Eventos Auditoría</small>
+            <h3 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ resumen.eventos_auditoria }}</h3>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 animate-fade-up delay-2">
+    <!-- Bitácora de Auditoría -->
+    <div class="col-lg-7">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3" style="color: var(--muni-granate);">
+                <i class="bi bi-journal-text me-2"></i>Bitácora de Seguridad y Auditoría del Sistema
+            </h6>
+
+            <form method="get" class="row g-2 mb-3 pb-3 border-bottom">
+                <div class="col-md-7">
+                    <input type="text" id="buscadorBitacora" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Filtrar por funcionario, acción o detalle..." oninput="filtrarBitacora()">
+                </div>
+                <div class="col-md-5">
+                    <select name="modulo" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">Todos los módulos</option>
+                        {% for mod in modulos_disponibles %}
+                            <option value="{{ mod }}" {% if modulo_filtro == mod %}selected{% endif %}>{{ mod }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            <div class="table-responsive" style="max-height: 460px; overflow-y: auto;">
+                <table class="table-muni">
+                    <thead>
+                        <tr>
+                            <th>Fecha / Hora</th>
+                            <th>Funcionario</th>
+                            <th>Módulo</th>
+                            <th>Acción / Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoBitacora">
+                        {% for b in bitacora %}
+                            <tr class="fila-bitacora">
+                                <td class="small text-nowrap">{{ b.fecha_hora|date:"d/m/Y H:i" }}</td>
+                                <td class="fw-semibold small">{{ b.usuario.nombre_completo|default:"Sistema" }}</td>
+                                <td><span class="badge bg-dark">{{ b.modulo }}</span></td>
+                                <td>
+                                    <div class="fw-semibold small">{{ b.accion }}</div>
+                                    <small class="text-muted">{{ b.detalle }}</small>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">No hay registros en la bitácora.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historial de Transiciones del Tubo -->
+    <div class="col-lg-5">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3" style="color: var(--muni-granate);">
+                <i class="bi bi-clock-history me-2"></i>Historial de Movimientos en el Tubo
+            </h6>
+            <div class="table-responsive" style="max-height: 520px; overflow-y: auto;">
+                <table class="table-muni">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Registro</th>
+                            <th>Transición</th>
+                            <th>Autor / Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in historial_tubo %}
+                            <tr>
+                                <td class="small text-nowrap">{{ h.fecha|date:"d/m/Y H:i" }}</td>
+                                <td class="fw-bold small">
+                                    {% if h.actividad %}{{ h.actividad.codigo }}{% elif h.carta %}{{ h.carta.codigo }}{% else %}-{% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ h.estado_anterior|default:"Inicio" }}</span>
+                                    <i class="bi bi-arrow-right mx-1"></i>
+                                    <span class="badge bg-danger" style="background: var(--muni-crimson);">{{ h.estado_nuevo }}</span>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold small">{{ h.autor.nombre_completo }}</div>
+                                    <small class="text-muted">{{ h.motivo_observacion }}</small>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">Sin cambios de estado registrados aún.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function filtrarBitacora() {
+        var filtro = document.getElementById("buscadorBitacora").value.toLowerCase().trim();
+        var filas = document.querySelectorAll("#cuerpoBitacora tr.fila-bitacora");
+        filas.forEach(function(fila) {
+            fila.style.display = (fila.textContent.toLowerCase().indexOf(filtro) > -1) ? "" : "none";
+        });
+    }
+</script>
+{% endblock %}
