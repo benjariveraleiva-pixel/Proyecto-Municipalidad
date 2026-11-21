@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <h4 class="fw-bold mb-1" style="color: var(--muni-granate);">
+                <i class="bi bi-shield-lock-fill me-2"></i>Centro de Administración Integral SGR
+            </h4>
+            <small class="text-muted">
+                Control total de tablas maestras, cuentas, flujos operativos y registros del sistema (acceso exclusivo Administrador)
+            </small>
+        </div>
+        <div class="d-flex gap-2">
+            <span class="badge bg-light text-dark border px-3 py-2">
+                <i class="bi bi-table me-1 text-danger"></i>{{ total_modelos }} Módulos
+            </span>
+            <span class="badge bg-light text-dark border px-3 py-2">
+                <i class="bi bi-database-fill me-1 text-danger"></i>{{ total_registros }} Registros en MySQL
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Columna Principal: Todos los Modelos por Categoría -->
+    <div class="col-lg-8">
+        {% for categoria, modelos in categorias.items %}
+        <div class="muni-card mb-4 animate-fade-up">
+            <h6 class="fw-bold mb-3 pb-2 border-bottom text-uppercase" style="color: var(--muni-granate); letter-spacing: 0.5px;">
+                {{ categoria }}
+            </h6>
+            <div class="list-group list-group-flush">
+                {% for m in modelos %}
+                <div class="list-group-item px-0 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="rounded-3 d-flex align-items-center justify-content-center"
+                             style="width: 38px; height: 38px; background: rgba(158, 27, 42, 0.1); color: var(--muni-crimson);">
+                            <i class="bi {{ m.icono }} fs-5"></i>
+                        </div>
+                        <div>
+                            <a href="{% url 'admin_sgr_list' m.slug %}" class="fw-bold text-decoration-none text-dark">
+                                {{ m.nombre }}
+                            </a>
+                            <div>
+                                <span class="badge bg-light text-secondary border" style="font-size: 0.72rem;">
+                                    {{ m.conteo }} registro{{ m.conteo|pluralize }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <a href="{% url 'admin_sgr_crear' m.slug %}" class="btn btn-sm btn-outline-success fw-semibold">
+                            <i class="bi bi-plus-lg me-1"></i>Añadir
+                        </a>
+                        <a href="{% url 'admin_sgr_list' m.slug %}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-granate);">
+                            <i class="bi bi-pencil-square me-1"></i>Administrar
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Columna Lateral: Acciones Recientes -->
+    <div class="col-lg-4">
+        <div class="muni-card animate-fade-up delay-1">
+            <h6 class="fw-bold mb-3 pb-2 border-bottom" style="color: var(--muni-granate);">
+                <i class="bi bi-activity me-2"></i>Acciones Recientes del Sistema
+            </h6>
+            <div class="d-flex flex-column gap-2">
+                {% for act in acciones_recientes %}
+                <div class="p-2 rounded-3 border bg-light bg-opacity-50 small">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="badge bg-dark" style="font-size: 0.68rem;">{{ act.modulo }}</span>
+                        <small class="text-muted" style="font-size: 0.7rem;">{{ act.fecha_hora|date:"d/m H:i" }}</small>
+                    </div>
+                    <div class="fw-semibold text-dark">{{ act.accion }}</div>
+                    <div class="text-muted" style="font-size: 0.76rem;">{{ act.detalle|truncatechars:85 }}</div>
+                    <small class="text-secondary" style="font-size: 0.72rem;">
+                        <i class="bi bi-person me-1"></i>{{ act.usuario.nombre_completo|default:"Sistema" }}
+                    </small>
+                </div>
+                {% empty %}
+                <p class="text-muted small text-center py-3">No hay acciones registradas todavía.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+            <a href="{% url 'admin_sgr_home' %}" class="text-decoration-none small fw-semibold" style="color: var(--muni-crimson);">
+                <i class="bi bi-arrow-left me-1"></i>Volver al Centro de Administración
+            </a>
+            <h4 class="fw-bold mb-0 mt-1" style="color: var(--muni-granate);">
+                <i class="bi {{ cfg.icono }} me-2"></i>{{ cfg.nombre }}
+            </h4>
+            <small class="text-muted">{{ cfg.categoria }} · {{ total_encontrados }} registro{{ total_encontrados|pluralize }} encontrado{{ total_encontrados|pluralize }}</small>
+        </div>
+
+        <div class="d-flex gap-2">
+            <a href="{% url 'admin_sgr_crear' slug %}" class="btn-muni text-decoration-none">
+                <i class="bi bi-plus-circle-fill"></i> Nuevo {{ cfg.nombre_singular }}
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <form method="get" class="row g-2 mb-3 pb-3 border-bottom align-items-center">
+        <div class="col-md-8">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Buscar en {{ cfg.nombre|lower }}...">
+                <button type="submit" class="btn text-white" style="background: var(--muni-granate);">Buscar</button>
+                {% if q %}
+                    <a href="{% url 'admin_sgr_list' slug %}" class="btn btn-outline-secondary">Limpiar</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-light text-dark border">Mostrando hasta 200 registros más recientes</span>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    {% for col in columnas %}
+                        <th>{{ col }}</th>
+                    {% endfor %}
+                    <th class="text-end" style="width: 170px;">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                <tr>
+                    {% for celda in fila.celdas %}
+                        <td>
+                            {% if celda.tipo == 'bool' %}
+                                {% if celda.valor %}
+                                    <span class="badge bg-success"><i class="bi bi-check-lg me-1"></i>Sí</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            {% else %}
+                                {{ celda.valor }}
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                    <td class="text-end">
+                        <div class="d-inline-flex gap-1">
+                            <a href="{% url 'admin_sgr_editar' slug fila.pk %}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Editar">
+                                <i class="bi bi-pencil-fill"></i> Editar
+                            </a>
+                            <form method="post" action="{% url 'admin_sgr_eliminar' slug fila.pk %}" class="d-inline"
+                                  onsubmit="return confirm('¿Seguro que desea eliminar permanentemente el registro: {{ fila.titulo|escapejs }}?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Eliminar">
+                                    <i class="bi bi-trash-fill"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ columnas|length|add:1 }}" class="text-center text-muted py-4">
+                        No existen registros cargados en {{ cfg.nombre }}.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

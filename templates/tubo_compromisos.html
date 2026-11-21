@@ -12,19 +12,30 @@
         </button>
     </div>
 
-    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevoCompromiso">
+    <div class="collapse {% if form.errors %}show{% endif %} mt-3 pt-3 border-top" id="collapseNuevoCompromiso">
+        {% if form.errors %}
+            <div class="alert alert-danger py-2 small">
+                <strong>Revise los siguientes campos:</strong>
+                {{ form.errors }}
+            </div>
+        {% endif %}
+
         <form method="post" class="row g-3">
             {% csrf_token %}
             <div class="col-md-3"><label class="small fw-bold">Fecha Actividad</label>{{ form.fecha_actividad }}</div>
-            <div class="col-md-5"><label class="small fw-bold">Meta Asociada</label>{{ form.meta_asignada }}</div>
-            <div class="col-md-4"><label class="small fw-bold">Tipo Actividad</label>{{ form.tipo_actividad }}</div>
+            <div class="col-md-4"><label class="small fw-bold">Meta Asociada</label>{{ form.meta_asignada }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Tipo Actividad</label>{{ form.tipo_actividad }}</div>
+            <div class="col-md-2"><label class="small fw-bold">Origen</label>{{ form.origen }}</div>
+
             <div class="col-md-4"><label class="small fw-bold">Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
             <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
             <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
             <div class="col-md-3"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
+
             <div class="col-md-4"><label class="small fw-bold">Responsable Seguimiento</label>{{ form.responsable_tubo }}</div>
             <div class="col-md-4"><label class="small fw-bold">Área de Apoyo</label>{{ form.area_apoyo }}</div>
             <div class="col-md-4"><label class="small fw-bold">Fecha Compromiso</label>{{ form.fecha_compromiso }}</div>
+
             <div class="col-md-9"><label class="small fw-bold">Descripción de la Solicitud / Problema</label>{{ form.descripcion }}</div>
             <div class="col-md-3 d-flex align-items-end">
                 <button type="submit" class="btn-muni w-100 justify-content-center">Guardar en el Tubo</button>
@@ -88,23 +99,37 @@
                             <small class="text-muted">{{ c.area_apoyo|default:"Gestión interna" }}</small>
                         </td>
                         <td>{{ c.fecha_compromiso|date:"d/m/Y"|default:"-" }}</td>
-                        <td><span class="badge bg-dark">{{ c.get_estado_tubo_display }}</span></td>
+                        <td>
+                            {% if c.estado_tubo == 'CERRADO' %}
+                                <span class="badge bg-success"><i class="bi bi-lock-fill me-1"></i>{{ c.get_estado_tubo_display }}</span>
+                            {% elif c.estado_tubo == 'VENCIDO' %}
+                                <span class="badge bg-danger">{{ c.get_estado_tubo_display }}</span>
+                            {% else %}
+                                <span class="badge bg-dark">{{ c.get_estado_tubo_display }}</span>
+                            {% endif %}
+                        </td>
                         <td style="min-width: 390px;">
-                            <form method="post" action="{% url 'cambiar_estado_compromiso' c.id %}" class="d-flex flex-wrap gap-1">
-                                {% csrf_token %}
-                                <select name="nuevo_estado" class="form-select form-select-sm" style="width: 120px;" title="Estado">
-                                    {% for cod, label in estados_tubo %}
-                                        <option value="{{ cod }}" {% if c.estado_tubo == cod %}selected{% endif %}>{{ label }}</option>
-                                    {% endfor %}
-                                </select>
-                                <select name="nuevo_responsable" class="form-select form-select-sm" style="width: 140px;" title="Responsable">
-                                    {% for f in funcionarios_tubo %}
-                                        <option value="{{ f.id }}" {% if c.responsable_tubo_id == f.id %}selected{% endif %}>{{ f.nombre_completo }}</option>
-                                    {% endfor %}
-                                </select>
-                                <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Motivo / Avance..." style="width: 130px;" required>
-                                <button type="submit" class="btn btn-sm btn-danger" style="background: var(--muni-crimson);">OK</button>
-                            </form>
+                            {% if c.estado_verificacion == 'APROBADA_PONDERA' and c.estado_tubo == 'CERRADO' %}
+                                <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 py-2 px-3">
+                                    <i class="bi bi-lock-fill me-1"></i>Validado, Ponderado y Cerrado{% if c.fecha_cierre %} ({{ c.fecha_cierre|date:"d/m/Y" }}){% endif %}
+                                </span>
+                            {% else %}
+                                <form method="post" action="{% url 'cambiar_estado_compromiso' c.id %}" class="d-flex flex-wrap gap-1">
+                                    {% csrf_token %}
+                                    <select name="nuevo_estado" class="form-select form-select-sm" style="width: 120px;" title="Estado">
+                                        {% for cod, label in estados_tubo %}
+                                            <option value="{{ cod }}" {% if c.estado_tubo == cod %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <select name="nuevo_responsable" class="form-select form-select-sm" style="width: 140px;" title="Responsable">
+                                        {% for f in funcionarios_tubo %}
+                                            <option value="{{ f.id }}" {% if c.responsable_tubo_id == f.id %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Motivo / Avance..." style="width: 130px;" required>
+                                    <button type="submit" class="btn btn-sm btn-danger" style="background: var(--muni-crimson);">OK</button>
+                                </form>
+                            {% endif %}
                         </td>
                     </tr>
                 {% empty %}

@@ -12,18 +12,31 @@
         </button>
     </div>
 
-    <div class="collapse mt-3 pt-3 border-top" id="collapseNuevaActividad">
+    <div class="collapse {% if form.errors %}show{% endif %} mt-3 pt-3 border-top" id="collapseNuevaActividad">
+        {% if form.errors %}
+            <div class="alert alert-danger py-2 small">
+                <strong>Revise los siguientes campos:</strong>
+                {{ form.errors }}
+            </div>
+        {% endif %}
+
         <form method="post" enctype="multipart/form-data" class="row g-3">
             {% csrf_token %}
             <div class="col-md-3"><label class="small fw-bold">Fecha Actividad</label>{{ form.fecha_actividad }}</div>
             <div class="col-md-5"><label class="small fw-bold">Meta Asignada a la que Aporta</label>{{ form.meta_asignada }}</div>
-            <div class="col-md-4"><label class="small fw-bold">Hito Asociado (Opcional)</label>{{ form.hito }}</div>
+            <div class="col-md-4">
+                <label class="small fw-bold">Hito Asociado <span class="text-muted fw-normal">(Opcional)</span></label>
+                {{ form.hito }}
+            </div>
 
             <div class="col-md-4"><label class="small fw-bold">Tipo de Actividad</label>{{ form.tipo_actividad }}</div>
             <div class="col-md-3"><label class="small fw-bold">Origen</label>{{ form.origen }}</div>
             <div class="col-md-5"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
 
-            <div class="col-md-3"><label class="small fw-bold">Vecino Registrado (Opcional)</label>{{ form.vecino_solicitante }}</div>
+            <div class="col-md-3">
+                <label class="small fw-bold">Vecino Registrado <span class="text-muted fw-normal">(Opcional)</span></label>
+                {{ form.vecino_solicitante }}
+            </div>
             <div class="col-md-4"><label class="small fw-bold">Nombre Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
             <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
             <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
@@ -94,6 +107,15 @@
                     <td>
                         <div class="fw-semibold">{{ act.funcionario_autor.nombre_completo }}</div>
                         <small class="text-muted">{{ act.meta_asignada.meta.nombre }}</small>
+                        {% if act.hito %}
+                            <div class="mt-1">
+                                <span class="badge bg-light text-dark border">
+                                    <i class="bi bi-flag-fill text-danger me-1"></i>{{ act.hito.codigo }} · {{ act.hito.nombre }}
+                                </span>
+                            </div>
+                        {% else %}
+                            <small class="d-block text-muted fst-italic">Sin hito asociado</small>
+                        {% endif %}
                     </td>
                     <td>
                         <div class="fw-semibold">{{ act.tipo_actividad }}</div>

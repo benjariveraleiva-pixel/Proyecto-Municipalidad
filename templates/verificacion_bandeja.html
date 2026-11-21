@@ -33,7 +33,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
         <div>
             <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-patch-check-fill me-2"></i>Bandeja del Verificador</h4>
-            <small class="text-muted">Auditoría de evidencias y decisión de ponderación para el cálculo del semáforo trimestral</small>
+            <small class="text-muted">Auditoría de evidencias, ponderación de metas y cierre automático al aprobar</small>
         </div>
 
         <form method="get" class="d-flex gap-2">
@@ -74,7 +74,10 @@
                     <td>
                         <div class="fw-bold">{{ act.funcionario_autor.nombre_completo }}</div>
                         <small class="d-block" style="color: var(--muni-crimson);">{{ act.meta_asignada.meta.nombre }}</small>
-                        <small class="text-muted">Avance actual: {{ act.meta_asignada.actividades_aprobadas_count }}/{{ act.meta_asignada.cantidad_objetivo }}</small>
+                        <small class="text-muted d-block">Avance actual: {{ act.meta_asignada.actividades_aprobadas_count }}/{{ act.meta_asignada.cantidad_objetivo }}</small>
+                        {% if act.hito %}
+                            <span class="badge bg-light text-dark border mt-1"><i class="bi bi-flag-fill text-danger me-1"></i>{{ act.hito.codigo }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         <div class="fw-semibold">{{ act.tipo_actividad }}</div>
@@ -94,26 +97,59 @@
                         {% endfor %}
                     </td>
                     <td>
-                        <span class="badge bg-dark">{{ act.get_estado_verificacion_display }}</span>
+                        {% if act.estado_verificacion == 'APROBADA_PONDERA' %}
+                            <span class="badge bg-success">{{ act.get_estado_verificacion_display }}</span>
+                        {% elif act.estado_verificacion == 'APROBADA_NO_PONDERA' %}
+                            <span class="badge bg-info text-dark">{{ act.get_estado_verificacion_display }}</span>
+                        {% elif act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}
+                            <span class="badge bg-warning text-dark">{{ act.get_estado_verificacion_display }}</span>
+                        {% elif act.estado_verificacion == 'RECHAZADA' or act.estado_verificacion == 'ANULADA' %}
+                            <span class="badge bg-danger">{{ act.get_estado_verificacion_display }}</span>
+                        {% else %}
+                            <span class="badge bg-dark">{{ act.get_estado_verificacion_display }}</span>
+                        {% endif %}
+
+                        {% if act.estado_tubo == 'CERRADO' %}
+                            <div class="mt-1">
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-lock-fill me-1"></i>Cerrada{% if act.fecha_cierre %} ({{ act.fecha_cierre|date:"d/m/Y" }}){% endif %}
+                                </span>
+                            </div>
+                        {% elif act.ingresa_al_tubo %}
+                            <small class="d-block text-muted mt-1">Tubo: {{ act.get_estado_tubo_display }}</small>
+                        {% endif %}
+
                         {% if act.verificado_por %}
                             <small class="d-block text-muted mt-1">Por: {{ act.verificado_por.nombre_completo }}</small>
                         {% endif %}
                     </td>
                     <td style="min-width: 280px;">
-                        <form method="post" action="{% url 'dictaminar_actividad' act.id %}" class="d-flex flex-column gap-1">
-                            {% csrf_token %}
-                            <select name="decision" class="form-select form-select-sm fw-semibold">
-                                <option value="APROBADA_PONDERA" {% if act.estado_verificacion == 'APROBADA_PONDERA' %}selected{% endif %}>✅ Aprobar y Pondera (Suma a meta)</option>
-                                <option value="APROBADA_NO_PONDERA" {% if act.estado_verificacion == 'APROBADA_NO_PONDERA' %}selected{% endif %}>☑️ Aprobar y No Pondera</option>
-                                <option value="SOLICITUD_ANTECEDENTES" {% if act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}selected{% endif %}>⚠️ Solicitar Antecedentes</option>
-                                <option value="RECHAZADA" {% if act.estado_verificacion == 'RECHAZADA' %}selected{% endif %}>❌ Rechazar Actividad</option>
-                                <option value="ANULADA" {% if act.estado_verificacion == 'ANULADA' %}selected{% endif %}>🚫 Anular Registro</option>
-                            </select>
-                            <div class="d-flex gap-1">
-                                <input type="text" name="observacion_verificador" value="{{ act.observacion_verificador }}" class="form-control form-control-sm" placeholder="Observación o motivo...">
-                                <button type="submit" class="btn btn-sm text-white fw-bold px-3" style="background: var(--muni-crimson);">Dictaminar</button>
+                        {% if act.estado_verificacion == 'APROBADA_PONDERA' and act.estado_tubo == 'CERRADO' %}
+                            <div class="p-2 rounded bg-success bg-opacity-10 border border-success border-opacity-25 text-success small">
+                                <div class="fw-bold"><i class="bi bi-lock-fill me-1"></i>Validada, Ponderada y Cerrada</div>
+                                {% if act.fecha_cierre %}
+                                    <div class="text-muted">Fecha de cierre: {{ act.fecha_cierre|date:"d/m/Y" }}</div>
+                                {% endif %}
+                                {% if act.observacion_verificador %}
+                                    <div class="text-dark mt-1"><strong>Obs:</strong> {{ act.observacion_verificador }}</div>
+                                {% endif %}
                             </div>
-                        </form>
+                        {% else %}
+                            <form method="post" action="{% url 'dictaminar_actividad' act.id %}" class="d-flex flex-column gap-1">
+                                {% csrf_token %}
+                                <select name="decision" class="form-select form-select-sm fw-semibold">
+                                    <option value="APROBADA_PONDERA" {% if act.estado_verificacion == 'APROBADA_PONDERA' %}selected{% endif %}>✅ Aprobar, Pondera y Cerrar (Suma a meta)</option>
+                                    <option value="APROBADA_NO_PONDERA" {% if act.estado_verificacion == 'APROBADA_NO_PONDERA' %}selected{% endif %}>☑️ Aprobar y No Pondera</option>
+                                    <option value="SOLICITUD_ANTECEDENTES" {% if act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}selected{% endif %}>⚠️ Solicitar Antecedentes</option>
+                                    <option value="RECHAZADA" {% if act.estado_verificacion == 'RECHAZADA' %}selected{% endif %}>❌ Rechazar Actividad</option>
+                                    <option value="ANULADA" {% if act.estado_verificacion == 'ANULADA' %}selected{% endif %}>🚫 Anular Registro</option>
+                                </select>
+                                <div class="d-flex gap-1">
+                                    <input type="text" name="observacion_verificador" value="{{ act.observacion_verificador }}" class="form-control form-control-sm" placeholder="Observación o motivo...">
+                                    <button type="submit" class="btn btn-sm text-white fw-bold px-3" style="background: var(--muni-crimson);">Dictaminar</button>
+                                </div>
+                            </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}

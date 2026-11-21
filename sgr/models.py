@@ -116,6 +116,53 @@ class Funcionario(models.Model):
     def tiene_rol(self, codigo_rol):
         return self.roles.filter(nombre=codigo_rol, activo=True).exists()
 
+    @property
+    def es_admin(self):
+        return self.user.is_superuser or self.tiene_rol('ADMIN')
+
+    @property
+    def es_delegado(self):
+        return self.tiene_rol('DELEGADO')
+
+    @property
+    def es_verificador(self):
+        return self.tiene_rol('VERIFICADOR')
+
+    @property
+    def es_funcionario_rol(self):
+        return self.tiene_rol('FUNCIONARIO')
+
+    @property
+    def es_solo_funcionario(self):
+        return self.es_funcionario_rol and not (self.es_admin or self.es_delegado or self.es_verificador)
+
+    @property
+    def puede_asignar_metas(self):
+        return self.es_admin or self.es_delegado
+
+    @property
+    def puede_verificar(self):
+        return self.es_admin or self.es_verificador
+
+    @property
+    def puede_ver_reportes(self):
+        return self.es_admin or self.es_delegado or self.es_verificador
+
+    @property
+    def puede_gestionar_usuarios(self):
+        return self.es_admin
+
+    @property
+    def puede_operar_flujos(self):
+        return self.es_admin or self.es_delegado or self.es_funcionario_rol
+
+    @property
+    def etiqueta_roles(self):
+        if self.user.is_superuser and not self.roles.exists():
+            return "Administrador"
+        nombres = [r.get_nombre_display() for r in self.roles.filter(activo=True)]
+        return " · ".join(nombres) if nombres else "Sin Rol"
+
     def __str__(self):
         return f"{self.nombre_completo} - {self.cargo.nombre} ({self.delegacion.nombre})"
 

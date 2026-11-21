@@ -1,6 +1,7 @@
 import csv
 import random
 import string
+from functools import wraps
 from decouple import config
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -26,6 +27,54 @@ from .forms import (
     VecinoForm, JuntaVecinosForm, HitoForm, FuncionarioCreateForm,
     ActividadRegistroForm, SubirEvidenciaForm
 )
+
+
+# ==============================================================================
+# CONTROL DE PERMISOS POR ROL (RBAC - PUNTO 3)
+# ==============================================================================
+def usuario_tiene_algun_rol(user, roles_permitidos):
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    func = getattr(user, 'funcionario', None)
+    if not func:
+        return False
+    if func.tiene_rol('ADMIN'):
+        return True
+    return func.roles.filter(nombre__in=roles_permitidos, activo=True).exists()
+
+
+def roles_requeridos(*roles_permitidos):
+    def decorator(view_func):
+        @wraps(view_func)
+        @login_required(login_url='login')
+        def _wrapped_view(request, *args, **kwargs):
+            if not usuario_tiene_algun_rol(request.user, roles_permitidos):
+                messages.error(
+                    request,
+                    "Acceso denegado: su perfil de usuario no tiene permisos para ingresar a ese módulo."
+                )
+                return redirect('dashboard_inicio')
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+    return decorator
+
+
+class RolesRequeridosMixin(LoginRequiredMixin):
+    roles_permitidos = []
+    login_url = 'login'
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        if self.roles_permitidos and not usuario_tiene_algun_rol(request.user, self.roles_permitidos):
+            messages.error(
+                request,
+                "Acceso denegado: su perfil de usuario no tiene permisos para ingresar a ese módulo."
+            )
+            return redirect('dashboard_inicio')
+        return super().dispatch(request, *args, **kwargs)
 
 
 def enviar_correo_institucional(destinatario, asunto, cuerpo):
@@ -106,6 +155,9 @@ def cerrar_sesion(request):
     return redirect('login')
 
 
+# ==============================================================================
+# DASHBOARD DIFERENCIADO POR ROL CON GRÁFICOS REALES (PUNTO 4)
+# ==============================================================================
 @login_required(login_url='login')
 def dashboard_inicio(request):
     trimestres = Trimestre.objects.all().order_by('-anio', '-numero')
@@ -115,21 +167,71 @@ def dashboard_inicio(request):
     func_actual = getattr(request.user, 'funcionario', None)
     delegacion_actual = func_actual.delegacion if func_actual else None
 
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado and not es_admin)
+    es_verificador = bool(func_actual and func_actual.es_verificador and not es_admin and not es_delegado)
+    es_vista_personal = bool(func_actual and func_actual.es_solo_funcionario)
+
     filtro_funcionario = request.GET.get('funcionario', '')
     filtro_territorio = request.GET.get('territorio', '')
     filtro_q = request.GET.get('q', '').strip()
 
+    # Actualizar automáticamente compromisos vencidos
     for act in Actividad.objects.filter(ingresa_al_tubo=True, estado_tubo__in=['PENDIENTE', 'EN_PROCESO']):
         act.save()
 
-    actividades_qs = Actividad.objects.select_related('funcionario_autor', 'responsable_tubo', 'territorio')
+    actividades_qs = Actividad.objects.select_related(
+        'funcionario_autor', 'responsable_tubo', 'territorio', 'meta_asignada__meta'
+    )
     asignaciones_qs = AsignacionMeta.objects.filter(activa=True).select_related('funcionario', 'meta')
+    cartas_qs = TuboCarta.objects.select_related('responsable_seguimiento', 'delegacion')
 
     if trimestre_activo:
         asignaciones_qs = asignaciones_qs.filter(trimestre=trimestre_activo)
+        actividades_qs = actividades_qs.filter(meta_asignada__trimestre=trimestre_activo)
 
-    if filtro_funcionario:
-        actividades_qs = actividades_qs.filter(responsable_tubo_id=filtro_funcionario)
+    # Alcance automático según Rol
+    if es_vista_personal and func_actual:
+        modo_dashboard = 'PERSONAL'
+        titulo_dashboard = f"Mi Panel de Gestión Personal · {func_actual.nombre_completo}"
+        funcionarios_lista = Funcionario.objects.filter(id=func_actual.id).select_related('cargo')
+        territorios_lista = Territorio.objects.filter(delegacion=delegacion_actual) if delegacion_actual else Territorio.objects.all()
+
+        actividades_qs = actividades_qs.filter(
+            Q(funcionario_autor=func_actual) | Q(responsable_tubo=func_actual)
+        )
+        asignaciones_qs = asignaciones_qs.filter(funcionario=func_actual)
+        cartas_qs = cartas_qs.filter(responsable_seguimiento=func_actual)
+        filtro_funcionario = str(func_actual.id)
+    elif es_delegado and delegacion_actual:
+        modo_dashboard = 'DELEGACION'
+        titulo_dashboard = f"Panel de Delegación {delegacion_actual.nombre}"
+        funcionarios_lista = Funcionario.objects.filter(delegacion=delegacion_actual).select_related('cargo')
+        territorios_lista = Territorio.objects.filter(delegacion=delegacion_actual)
+
+        actividades_qs = actividades_qs.filter(
+            Q(territorio__delegacion=delegacion_actual) |
+            Q(funcionario_autor__delegacion=delegacion_actual) |
+            Q(responsable_tubo__delegacion=delegacion_actual)
+        )
+        asignaciones_qs = asignaciones_qs.filter(funcionario__delegacion=delegacion_actual)
+        cartas_qs = cartas_qs.filter(delegacion=delegacion_actual)
+    elif es_verificador:
+        modo_dashboard = 'VERIFICACION'
+        titulo_dashboard = "Panel de Verificación y Control de Evidencias"
+        funcionarios_lista = Funcionario.objects.select_related('cargo').all()
+        territorios_lista = Territorio.objects.all()
+    else:
+        modo_dashboard = 'GLOBAL'
+        titulo_dashboard = "Panel Global · Coordinación de Delegaciones La Serena"
+        funcionarios_lista = Funcionario.objects.select_related('cargo').all()
+        territorios_lista = Territorio.objects.all()
+
+    # Filtros manuales del usuario (si no está en modo personal bloqueado)
+    if filtro_funcionario and not es_vista_personal:
+        actividades_qs = actividades_qs.filter(
+            Q(funcionario_autor_id=filtro_funcionario) | Q(responsable_tubo_id=filtro_funcionario)
+        )
         asignaciones_qs = asignaciones_qs.filter(funcionario_id=filtro_funcionario)
 
     if filtro_territorio:
@@ -142,20 +244,34 @@ def dashboard_inicio(request):
             Q(solicitante_rut__icontains=filtro_q)
         )
 
-    total_aprobadas = actividades_qs.filter(estado_verificacion='APROBADA_PONDERA').count()
-    total_pendientes_verif = actividades_qs.filter(estado_verificacion='PENDIENTE').count()
-    total_vencidos = actividades_qs.filter(ingresa_al_tubo=True, estado_tubo='VENCIDO').count()
+    # KPIs Reales
+    if es_vista_personal and func_actual:
+        actividades_propias = actividades_qs.filter(funcionario_autor=func_actual)
+        total_aprobadas = actividades_propias.filter(estado_verificacion='APROBADA_PONDERA').count()
+        total_pendientes_verif = actividades_propias.filter(estado_verificacion='PENDIENTE').count()
+        total_vencidos = actividades_qs.filter(
+            ingresa_al_tubo=True, responsable_tubo=func_actual, estado_tubo='VENCIDO'
+        ).count()
+    else:
+        total_aprobadas = actividades_qs.filter(estado_verificacion='APROBADA_PONDERA').count()
+        total_pendientes_verif = actividades_qs.filter(estado_verificacion='PENDIENTE').count()
+        total_vencidos = actividades_qs.filter(ingresa_al_tubo=True, estado_tubo='VENCIDO').count()
 
-    funcionarios_lista = Funcionario.objects.select_related('cargo').all()
+    # Semáforo real por funcionario
     semaforo_funcionarios = []
     suma_cumplimientos = 0.0
+    funcionarios_para_semaforo = funcionarios_lista
+    if filtro_funcionario and not es_vista_personal:
+        funcionarios_para_semaforo = funcionarios_lista.filter(id=filtro_funcionario)
 
-    for f in funcionarios_lista:
+    for f in funcionarios_para_semaforo:
         metas_f = AsignacionMeta.objects.filter(funcionario=f, trimestre=trimestre_activo, activa=True)
         if not metas_f.exists():
             continue
         cumplimiento_pond_total = sum(m.resultado_ponderado for m in metas_f)
-        ingresos_f = Actividad.objects.filter(funcionario_autor=f).count()
+        ingresos_f = Actividad.objects.filter(
+            funcionario_autor=f, meta_asignada__trimestre=trimestre_activo
+        ).count() if trimestre_activo else Actividad.objects.filter(funcionario_autor=f).count()
 
         if cumplimiento_pond_total >= 80:
             color = 'verde'
@@ -173,15 +289,91 @@ def dashboard_inicio(request):
         suma_cumplimientos += cumplimiento_pond_total
 
     cumplimiento_general = round(suma_cumplimientos / len(semaforo_funcionarios), 1) if semaforo_funcionarios else 0.0
+    meta_esperada_hoy = trimestre_activo.porcentaje_esperado_hoy if trimestre_activo else 0.0
 
+    # ==========================================================================
+    # DATOS REALES PARA LOS 3 GRÁFICOS (CHART.JS)
+    # ==========================================================================
+    tubo_qs = actividades_qs.filter(ingresa_al_tubo=True)
+
+    # Gráfico 1: Estado del Tubo de Compromisos
+    chart_tubo_data = {
+        'labels': ['Pendiente', 'En Proceso', 'Realizado', 'Cerrado', 'Vencido'],
+        'values': [
+            tubo_qs.filter(estado_tubo='PENDIENTE').count(),
+            tubo_qs.filter(estado_tubo='EN_PROCESO').count(),
+            tubo_qs.filter(estado_tubo='REALIZADO').count(),
+            tubo_qs.filter(estado_tubo='CERRADO').count(),
+            tubo_qs.filter(estado_tubo='VENCIDO').count(),
+        ]
+    }
+
+    # Gráfico 2: Cumplimiento de Metas (Esperado a hoy vs Real con Tope 120%)
+    metas_labels = []
+    metas_reales = []
+    metas_esperadas = []
+    for asig in asignaciones_qs[:10]:
+        etiqueta = f"{asig.meta.codigo} ({asig.funcionario.nombres.split()[0]})" if not es_vista_personal else f"{asig.meta.codigo} · {asig.meta.nombre[:22]}"
+        metas_labels.append(etiqueta)
+        metas_reales.append(float(asig.porcentaje_cumplimiento_aplicable))
+        metas_esperadas.append(float(meta_esperada_hoy))
+
+    chart_metas_data = {
+        'labels': metas_labels,
+        'reales': metas_reales,
+        'esperadas': metas_esperadas,
+    }
+
+    # Gráfico 3: Carga por Funcionario (Equipo) o Estado de Mis Actividades (Personal)
+    if es_vista_personal and func_actual:
+        acts_verif = actividades_qs.filter(funcionario_autor=func_actual)
+        chart_tercero_data = {
+            'tipo': 'dona_verificacion',
+            'labels': ['Aprobada y Pondera', 'Aprobada No Pondera', 'Pendiente Revisión', 'Solicita Antecedentes', 'Rechazada'],
+            'values': [
+                acts_verif.filter(estado_verificacion='APROBADA_PONDERA').count(),
+                acts_verif.filter(estado_verificacion='APROBADA_NO_PONDERA').count(),
+                acts_verif.filter(estado_verificacion='PENDIENTE').count(),
+                acts_verif.filter(estado_verificacion='SOLICITUD_ANTECEDENTES').count(),
+                acts_verif.filter(estado_verificacion='RECHAZADA').count(),
+            ]
+        }
+    else:
+        carga_labels = []
+        carga_pendiente = []
+        carga_proceso = []
+        carga_cerrado = []
+        carga_vencido = []
+
+        for f in funcionarios_para_semaforo:
+            tubo_f = tubo_qs.filter(responsable_tubo=f)
+            if not tubo_f.exists():
+                continue
+            carga_labels.append(f.nombre_completo)
+            carga_pendiente.append(tubo_f.filter(estado_tubo='PENDIENTE').count())
+            carga_proceso.append(tubo_f.filter(estado_tubo='EN_PROCESO').count())
+            carga_cerrado.append(tubo_f.filter(estado_tubo__in=['REALIZADO', 'CERRADO']).count())
+            carga_vencido.append(tubo_f.filter(estado_tubo='VENCIDO').count())
+
+        chart_tercero_data = {
+            'tipo': 'carga_funcionarios',
+            'labels': carga_labels,
+            'pendientes': carga_pendiente,
+            'en_proceso': carga_proceso,
+            'cerrados': carga_cerrado,
+            'vencidos': carga_vencido,
+        }
+
+    # Tabla resumen del Tubo
     items_tubo = []
     mapa_badges = {
         'PENDIENTE': 'estado-pendiente',
         'EN_PROCESO': 'estado-proceso',
         'REALIZADO': 'estado-realizado',
+        'CERRADO': 'estado-realizado',
         'VENCIDO': 'estado-vencido',
     }
-    for act in actividades_qs.filter(ingresa_al_tubo=True).order_by('fecha_compromiso')[:6]:
+    for act in tubo_qs.order_by('fecha_compromiso')[:6]:
         items_tubo.append({
             'codigo': act.codigo,
             'solicitante': act.solicitante_nombre,
@@ -191,7 +383,7 @@ def dashboard_inicio(request):
             'clase_badge': mapa_badges.get(act.estado_tubo, 'estado-proceso')
         })
 
-    for carta in TuboCarta.objects.select_related('responsable_seguimiento').all()[:4]:
+    for carta in cartas_qs[:4]:
         items_tubo.append({
             'codigo': carta.codigo,
             'solicitante': f"{carta.remitente} (Carta)",
@@ -202,12 +394,15 @@ def dashboard_inicio(request):
         })
 
     context = {
+        'modo_dashboard': modo_dashboard,
+        'titulo_dashboard': titulo_dashboard,
+        'es_vista_personal': es_vista_personal,
         'delegacion_actual': delegacion_actual,
         'trimestres': trimestres,
         'trimestre_activo': trimestre_activo,
-        'meta_esperada_hoy': trimestre_activo.porcentaje_esperado_hoy if trimestre_activo else 0.0,
+        'meta_esperada_hoy': meta_esperada_hoy,
         'funcionarios_lista': funcionarios_lista,
-        'territorios_lista': Territorio.objects.all(),
+        'territorios_lista': territorios_lista,
         'filtro_funcionario': filtro_funcionario,
         'filtro_territorio': filtro_territorio,
         'filtro_q': filtro_q,
@@ -218,21 +413,30 @@ def dashboard_inicio(request):
         'asignaciones_metas': asignaciones_qs,
         'semaforo_funcionarios': semaforo_funcionarios,
         'items_tubo': items_tubo,
+        'chart_tubo_data': chart_tubo_data,
+        'chart_metas_data': chart_metas_data,
+        'chart_tercero_data': chart_tercero_data,
     }
     return render(request, 'dashboard_preview.html', context)
 
 
 # ==============================================================================
-# MÓDULO 1: ASIGNACIÓN DE METAS A FUNCIONARIOS
+# MÓDULO 1: ASIGNACIÓN DE METAS A FUNCIONARIOS (SOLO ADMIN Y DELEGADO)
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO')
 def asignacion_metas_view(request):
     trimestres = Trimestre.objects.all().order_by('-anio', '-numero')
     trimestre_activo = trimestres.first()
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+
+    funcionarios_scope = Funcionario.objects.select_related('cargo').all()
+    if not es_admin and func_actual:
+        funcionarios_scope = funcionarios_scope.filter(delegacion=func_actual.delegacion)
 
     if request.method == 'POST':
         form = AsignacionMetaForm(request.POST)
+        form.fields['funcionario'].queryset = funcionarios_scope
         if form.is_valid():
             asig = form.save()
             BitacoraAuditoria.objects.create(
@@ -250,9 +454,10 @@ def asignacion_metas_view(request):
             messages.error(request, "No se pudo asignar la meta. Revise las validaciones del formulario.")
     else:
         form = AsignacionMetaForm(initial={'trimestre': trimestre_activo, 'activa': True})
+        form.fields['funcionario'].queryset = funcionarios_scope
 
     resumen_funcionarios = []
-    for f in Funcionario.objects.select_related('cargo').all():
+    for f in funcionarios_scope:
         metas_f = AsignacionMeta.objects.filter(funcionario=f, trimestre=trimestre_activo, activa=True).select_related('meta')
         total_pond = metas_f.aggregate(total=Sum('ponderacion'))['total'] or 0
         resumen_funcionarios.append({
@@ -270,13 +475,20 @@ def asignacion_metas_view(request):
 
 
 # ==============================================================================
-# MÓDULO 2: FLUJO DE COMPROMISOS (TUBO DE GESTIÓN CON REASIGNACIÓN)
+# MÓDULO 2: FLUJO DE COMPROMISOS (TUBO DE GESTIÓN CON REASIGNACIÓN Y RBAC)
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO', 'VERIFICADOR')
 def tubo_compromisos_view(request):
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado)
+    es_solo_verificador = bool(func_actual and func_actual.es_verificador and not (es_admin or es_delegado or func_actual.es_funcionario_rol))
 
     if request.method == 'POST':
+        if es_solo_verificador:
+            messages.error(request, "El rol Verificador tiene acceso de solo lectura en el Tubo de Compromisos.")
+            return redirect('tubo_compromisos')
+
         form = CompromisoTuboForm(request.POST)
         if form.is_valid():
             comp = form.save(commit=False)
@@ -297,6 +509,12 @@ def tubo_compromisos_view(request):
             messages.error(request, "Error al registrar el compromiso. Revise los campos.")
     else:
         form = CompromisoTuboForm(initial={'responsable_tubo': func_actual})
+        if func_actual and func_actual.es_solo_funcionario:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(funcionario=func_actual, activa=True)
+        elif es_delegado and not es_admin and func_actual:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                funcionario__delegacion=func_actual.delegacion, activa=True
+            )
 
     q = (request.GET.get('q') or request.GET.get('buscar') or '').strip()
     estado_filtro = request.GET.get('estado', '').strip()
@@ -304,6 +522,14 @@ def tubo_compromisos_view(request):
     compromisos = Actividad.objects.filter(ingresa_al_tubo=True).select_related(
         'territorio', 'responsable_tubo', 'meta_asignada__meta', 'vecino_solicitante'
     ).order_by('-id')
+
+    # Delegados y Funcionarios ven únicamente el Tubo de su propia delegación
+    if not es_admin and not es_solo_verificador and func_actual:
+        compromisos = compromisos.filter(
+            Q(territorio__delegacion=func_actual.delegacion) |
+            Q(responsable_tubo__delegacion=func_actual.delegacion) |
+            Q(funcionario_autor__delegacion=func_actual.delegacion)
+        )
 
     if q:
         q_limpio = q.replace('.', '').replace('-', '')
@@ -325,29 +551,49 @@ def tubo_compromisos_view(request):
     if estado_filtro:
         compromisos = compromisos.filter(estado_tubo=estado_filtro)
 
+    funcionarios_tubo = Funcionario.objects.filter(estado='ACTIVO').order_by('nombres')
+    if not es_admin and func_actual:
+        funcionarios_tubo = funcionarios_tubo.filter(delegacion=func_actual.delegacion)
+
     return render(request, 'tubo_compromisos.html', {
         'form': form,
         'compromisos': compromisos,
         'estados_tubo': Actividad.ESTADOS_TUBO,
-        'funcionarios_tubo': Funcionario.objects.filter(estado='ACTIVO').order_by('nombres'),
+        'funcionarios_tubo': funcionarios_tubo,
         'q': q,
         'estado_filtro': estado_filtro,
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def cambiar_estado_compromiso(request, pk):
     if request.method == 'POST':
         comp = get_object_or_404(Actividad, pk=pk, ingresa_al_tubo=True)
+        func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+        es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+        es_delegado = bool(func_actual and func_actual.es_delegado)
+
+        if comp.estado_verificacion == 'APROBADA_PONDERA' and comp.estado_tubo == 'CERRADO':
+            messages.error(request, f"El compromiso {comp.codigo} ya fue validado, ponderado y cerrado definitivamente.")
+            return redirect('tubo_compromisos')
+
+        # Un Funcionario solo puede modificar compromisos donde es el responsable asignado
+        if not es_admin and not es_delegado and comp.responsable_tubo != func_actual:
+            messages.error(
+                request,
+                f"No puede modificar el compromiso {comp.codigo} porque está asignado a {comp.responsable_tubo.nombre_completo}."
+            )
+            return redirect('tubo_compromisos')
+
         nuevo_estado = request.POST.get('nuevo_estado') or comp.estado_tubo
         nuevo_resp_id = request.POST.get('nuevo_responsable')
         observacion = request.POST.get('observacion', '').strip() or 'Actualización en el Tubo de Gestión'
-        func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
 
         estado_ant = comp.estado_tubo
         resp_ant = comp.responsable_tubo
 
-        if nuevo_resp_id:
+        # Solo Admin o Delegado pueden reasignar responsables
+        if nuevo_resp_id and (es_admin or es_delegado):
             nuevo_resp = Funcionario.objects.filter(id=nuevo_resp_id).first()
             if nuevo_resp:
                 comp.responsable_tubo = nuevo_resp
@@ -384,8 +630,11 @@ def cambiar_estado_compromiso(request, pk):
 # ==============================================================================
 # MÓDULO 3: FLUJO DE CARTAS (TUBO DE CARTAS)
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def tubo_cartas_view(request):
+    func_actual = getattr(request.user, 'funcionario', None)
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+
     if request.method == 'POST':
         form = TuboCartaForm(request.POST)
         if form.is_valid():
@@ -393,10 +642,12 @@ def tubo_cartas_view(request):
             messages.success(request, f"Carta {carta.codigo} (N° {carta.numero_carta}) registrada exitosamente.")
             return redirect('tubo_cartas')
     else:
-        form = TuboCartaForm()
+        form = TuboCartaForm(initial={'delegacion': func_actual.delegacion if func_actual else None})
 
     estado_filtro = request.GET.get('estado', '')
     cartas = TuboCarta.objects.select_related('delegacion', 'responsable_seguimiento').order_by('-id')
+    if not es_admin and func_actual:
+        cartas = cartas.filter(delegacion=func_actual.delegacion)
     if estado_filtro:
         cartas = cartas.filter(estado=estado_filtro)
 
@@ -408,7 +659,7 @@ def tubo_cartas_view(request):
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def cambiar_estado_carta(request, pk):
     if request.method == 'POST':
         carta = get_object_or_404(TuboCarta, pk=pk)
@@ -436,15 +687,17 @@ def cambiar_estado_carta(request, pk):
 
 
 # ==============================================================================
-# MANTENEDORES (CRUD): VECINOS, JUNTAS, HITOS Y FUNCIONARIOS CON CORREO SMTP
+# MANTENEDORES (CRUD): VECINOS, JUNTAS, HITOS Y FUNCIONARIOS CON RBAC
 # ==============================================================================
-class VecinoListView(LoginRequiredMixin, ListView):
+class VecinoListView(RolesRequeridosMixin, ListView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = Vecino
     template_name = 'crud/vecinos_list.html'
     context_object_name = 'vecinos'
 
 
-class VecinoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+class VecinoCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = Vecino
     form_class = VecinoForm
     template_name = 'crud/form_base.html'
@@ -453,7 +706,8 @@ class VecinoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
     extra_context = {'titulo': 'Registrar Nuevo Vecino', 'url_cancelar': 'vecinos_list'}
 
 
-class VecinoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+class VecinoUpdateView(RolesRequeridosMixin, SuccessMessageMixin, UpdateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = Vecino
     form_class = VecinoForm
     template_name = 'crud/form_base.html'
@@ -462,13 +716,15 @@ class VecinoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     extra_context = {'titulo': 'Editar Vecino', 'url_cancelar': 'vecinos_list'}
 
 
-class JuntaListView(LoginRequiredMixin, ListView):
+class JuntaListView(RolesRequeridosMixin, ListView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = JuntaVecinos
     template_name = 'crud/juntas_list.html'
     context_object_name = 'juntas'
 
 
-class JuntaCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+class JuntaCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = JuntaVecinos
     form_class = JuntaVecinosForm
     template_name = 'crud/form_base.html'
@@ -477,7 +733,8 @@ class JuntaCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
     extra_context = {'titulo': 'Registrar Junta de Vecinos', 'url_cancelar': 'juntas_list'}
 
 
-class JuntaUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+class JuntaUpdateView(RolesRequeridosMixin, SuccessMessageMixin, UpdateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = JuntaVecinos
     form_class = JuntaVecinosForm
     template_name = 'crud/form_base.html'
@@ -486,13 +743,15 @@ class JuntaUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     extra_context = {'titulo': 'Editar Junta de Vecinos', 'url_cancelar': 'juntas_list'}
 
 
-class HitoListView(LoginRequiredMixin, ListView):
+class HitoListView(RolesRequeridosMixin, ListView):
+    roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
     model = Hito
     template_name = 'crud/hitos_list.html'
     context_object_name = 'hitos'
 
 
-class HitoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+class HitoCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO']
     model = Hito
     form_class = HitoForm
     template_name = 'crud/form_base.html'
@@ -501,7 +760,8 @@ class HitoCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
     extra_context = {'titulo': 'Programar Nuevo Hito', 'url_cancelar': 'hitos_list'}
 
 
-class HitoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
+class HitoUpdateView(RolesRequeridosMixin, SuccessMessageMixin, UpdateView):
+    roles_permitidos = ['ADMIN', 'DELEGADO']
     model = Hito
     form_class = HitoForm
     template_name = 'crud/form_base.html'
@@ -510,7 +770,8 @@ class HitoUpdateView(LoginRequiredMixin, SuccessMessageMixin, UpdateView):
     extra_context = {'titulo': 'Editar Hito', 'url_cancelar': 'hitos_list'}
 
 
-class FuncionarioCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView):
+class FuncionarioCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateView):
+    roles_permitidos = ['ADMIN']
     model = Funcionario
     form_class = FuncionarioCreateForm
     template_name = 'crud/form_base.html'
@@ -541,7 +802,6 @@ class FuncionarioCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView)
         funcionario.save()
         funcionario.roles.set(roles_seleccionados)
 
-        # Enviar credencial temporal de un solo uso al correo del funcionario (Sección 12)
         asunto = "Activación de Cuenta Institucional | SGR Municipalidad de La Serena"
         cuerpo = (
             f"Hola {funcionario.nombre_completo},\n\n"
@@ -571,12 +831,22 @@ class FuncionarioCreateView(LoginRequiredMixin, SuccessMessageMixin, CreateView)
 # ==============================================================================
 # MÓDULO: REGISTRO DE ACTIVIDADES, EVIDENCIAS Y BANDEJA DEL VERIFICADOR
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def actividades_list_view(request):
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado)
+    es_solo_funcionario = bool(func_actual and func_actual.es_solo_funcionario)
 
     if request.method == 'POST':
         form = ActividadRegistroForm(request.POST, request.FILES)
+        if es_solo_funcionario:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(funcionario=func_actual, activa=True)
+        elif es_delegado and not es_admin:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                funcionario__delegacion=func_actual.delegacion, activa=True
+            )
+
         if form.is_valid():
             act = form.save(commit=False)
             act.funcionario_autor = func_actual
@@ -606,11 +876,22 @@ def actividades_list_view(request):
             messages.error(request, "Error al registrar la actividad. Verifique los campos y el archivo adjunto.")
     else:
         form = ActividadRegistroForm(initial={'responsable_tubo': func_actual})
+        if es_solo_funcionario:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(funcionario=func_actual, activa=True)
+        elif es_delegado and not es_admin:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                funcionario__delegacion=func_actual.delegacion, activa=True
+            )
 
     estado_filtro = request.GET.get('estado', '')
     actividades = Actividad.objects.select_related(
-        'funcionario_autor', 'meta_asignada__meta', 'territorio', 'verificado_por'
+        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio', 'verificado_por'
     ).prefetch_related('evidencias').order_by('-id')
+
+    if es_solo_funcionario:
+        actividades = actividades.filter(funcionario_autor=func_actual)
+    elif es_delegado and not es_admin and func_actual:
+        actividades = actividades.filter(funcionario_autor__delegacion=func_actual.delegacion)
 
     if estado_filtro:
         actividades = actividades.filter(estado_verificacion=estado_filtro)
@@ -624,10 +905,15 @@ def actividades_list_view(request):
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def adjuntar_evidencia_view(request, pk):
     act = get_object_or_404(Actividad, pk=pk)
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+
+    if not es_admin and func_actual.es_solo_funcionario and act.funcionario_autor != func_actual:
+        messages.error(request, "No puede adjuntar evidencias a actividades registradas por otro funcionario.")
+        return redirect('actividades_list')
 
     if act.bloqueada_edicion:
         messages.error(request, f"La actividad {act.codigo} ya fue aprobada y se encuentra bloqueada contra modificaciones.")
@@ -657,13 +943,13 @@ def adjuntar_evidencia_view(request, pk):
     return redirect('actividades_list')
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'VERIFICADOR')
 def bandeja_verificacion_view(request):
     estado_filtro = request.GET.get('estado', 'PENDIENTE')
     funcionario_filtro = request.GET.get('funcionario', '')
 
     actividades = Actividad.objects.select_related(
-        'funcionario_autor', 'meta_asignada__meta', 'territorio', 'verificado_por'
+        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio', 'verificado_por'
     ).prefetch_related('evidencias').order_by('-fecha_registro')
 
     if estado_filtro and estado_filtro != 'TODOS':
@@ -689,11 +975,15 @@ def bandeja_verificacion_view(request):
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'VERIFICADOR')
 def dictaminar_actividad_view(request, pk):
     if request.method == 'POST':
         act = get_object_or_404(Actividad, pk=pk)
         func_verificador = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+
+        if act.estado_verificacion == 'APROBADA_PONDERA' and act.estado_tubo == 'CERRADO':
+            messages.warning(request, f"La actividad {act.codigo} ya fue validada, ponderada y cerrada anteriormente.")
+            return redirect('bandeja_verificacion')
 
         decision = request.POST.get('decision')
         observacion = request.POST.get('observacion_verificador', '').strip()
@@ -703,21 +993,41 @@ def dictaminar_actividad_view(request, pk):
             return redirect('bandeja_verificacion')
 
         estado_anterior = act.get_estado_verificacion_display()
+        estado_tubo_anterior = act.estado_tubo
+
         act.estado_verificacion = decision
         act.observacion_verificador = observacion
         act.verificado_por = func_verificador
         act.fecha_verificacion = timezone.now()
+
+        cierre_msg = ""
+        if decision == 'APROBADA_PONDERA':
+            act.estado_tubo = 'CERRADO'
+            act.fecha_cierre = timezone.now().date()
+            cierre_msg = " Actividad cerrada automáticamente."
+
         act.save()
+
+        if decision == 'APROBADA_PONDERA' and act.ingresa_al_tubo:
+            HistorialTubo.objects.create(
+                actividad=act,
+                estado_anterior=estado_tubo_anterior,
+                estado_nuevo='CERRADO',
+                responsable_anterior=act.responsable_tubo,
+                responsable_nuevo=act.responsable_tubo,
+                autor=func_verificador,
+                motivo_observacion=f"Cierre automático al aprobar y ponderar actividad. {observacion}".strip()
+            )
 
         BitacoraAuditoria.objects.create(
             usuario=func_verificador,
             modulo='Verificación',
             accion=f"Dictamen: {act.get_estado_verificacion_display()}",
-            detalle=f"Actividad {act.codigo} pasó de '{estado_anterior}' a '{act.get_estado_verificacion_display()}'. Obs: {observacion or 'Sin observaciones'}"
+            detalle=f"Actividad {act.codigo} pasó de '{estado_anterior}' a '{act.get_estado_verificacion_display()}'.{cierre_msg} Obs: {observacion or 'Sin observaciones'}"
         )
         messages.success(
             request,
-            f"Dictamen registrado: Actividad {act.codigo} marcada como '{act.get_estado_verificacion_display()}'."
+            f"Dictamen registrado: Actividad {act.codigo} marcada como '{act.get_estado_verificacion_display()}'.{cierre_msg}"
         )
     return redirect('bandeja_verificacion')
 
@@ -889,11 +1199,12 @@ def nueva_clave_recuperacion_view(request):
 
 
 # ==============================================================================
-# PUNTO 4: GESTIONES SOCIALES (LAS 3 ETAPAS Y DÍAS DE DEMORA)
+# GESTIONES SOCIALES (LAS 3 ETAPAS Y DÍAS DE DEMORA)
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def gestiones_sociales_view(request):
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
 
     if request.method == 'POST' and 'crear_gestion' in request.POST:
         vecino_id = request.POST.get('vecino')
@@ -919,6 +1230,10 @@ def gestiones_sociales_view(request):
 
     q = request.GET.get('q', '').strip()
     gestiones = GestionSocial.objects.select_related('vecino', 'territorio', 'asistente_social').order_by('-id')
+    if not es_admin and func_actual:
+        gestiones = gestiones.filter(
+            Q(territorio__delegacion=func_actual.delegacion) | Q(asistente_social=func_actual)
+        )
 
     if q:
         gestiones = gestiones.filter(
@@ -936,7 +1251,7 @@ def gestiones_sociales_view(request):
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def actualizar_etapa_social(request, pk):
     if request.method == 'POST':
         gs = get_object_or_404(GestionSocial, pk=pk)
@@ -972,14 +1287,20 @@ def actualizar_etapa_social(request, pk):
 
 
 # ==============================================================================
-# PUNTO 5: REPORTES Y BITÁCORA (EXPORTACIÓN CSV CON METADATOS SECCIÓN 16)
+# REPORTES Y BITÁCORA (SOLO ADMIN, DELEGADO Y VERIFICADOR)
 # ==============================================================================
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'VERIFICADOR')
 def reportes_bitacora_view(request):
+    func_actual = getattr(request.user, 'funcionario', None)
+    es_admin_o_verif = request.user.is_superuser or (func_actual and (func_actual.es_admin or func_actual.es_verificador))
+
     modulo_filtro = request.GET.get('modulo', '').strip()
     q_bitacora = request.GET.get('q', '').strip()
 
     bitacora = BitacoraAuditoria.objects.select_related('usuario').order_by('-fecha_hora')
+    if not es_admin_o_verif and func_actual:
+        bitacora = bitacora.filter(usuario__delegacion=func_actual.delegacion)
+
     if modulo_filtro:
         bitacora = bitacora.filter(modulo__iexact=modulo_filtro)
     if q_bitacora:
@@ -992,7 +1313,9 @@ def reportes_bitacora_view(request):
 
     historial_tubo = HistorialTubo.objects.select_related(
         'actividad', 'carta', 'autor', 'responsable_anterior', 'responsable_nuevo'
-    ).order_by('-fecha')[:30]
+    ).order_by('-fecha')
+    if not es_admin_o_verif and func_actual:
+        historial_tubo = historial_tubo.filter(autor__delegacion=func_actual.delegacion)
 
     resumen_sistema = {
         'total_actividades': Actividad.objects.count(),
@@ -1000,14 +1323,14 @@ def reportes_bitacora_view(request):
         'compromisos_tubo': Actividad.objects.filter(ingresa_al_tubo=True).count(),
         'cartas': TuboCarta.objects.count(),
         'hitos': Hito.objects.count(),
-        'eventos_auditoria': BitacoraAuditoria.objects.count(),
+        'eventos_auditoria': bitacora.count(),
     }
 
     modulos_disponibles = BitacoraAuditoria.objects.values_list('modulo', flat=True).distinct()
 
     return render(request, 'reportes_bitacora.html', {
         'bitacora': bitacora[:100],
-        'historial_tubo': historial_tubo,
+        'historial_tubo': historial_tubo[:30],
         'resumen': resumen_sistema,
         'modulos_disponibles': modulos_disponibles,
         'modulo_filtro': modulo_filtro,
@@ -1015,10 +1338,12 @@ def reportes_bitacora_view(request):
     })
 
 
-@login_required(login_url='login')
+@roles_requeridos('ADMIN', 'DELEGADO', 'VERIFICADOR')
 def exportar_reporte_csv(request):
     tipo = request.GET.get('tipo', 'actividades')
     func_actual = getattr(request.user, 'funcionario', None)
+    es_admin_o_verif = request.user.is_superuser or (func_actual and (func_actual.es_admin or func_actual.es_verificador))
+
     delegacion_nombre = func_actual.delegacion.nombre if func_actual and func_actual.delegacion else 'General La Serena'
     trimestre_activo = Trimestre.objects.order_by('-anio', '-numero').first()
     trimestre_str = f"{trimestre_activo.nombre} ({trimestre_activo.anio})" if trimestre_activo else '2026'
@@ -1028,19 +1353,24 @@ def exportar_reporte_csv(request):
     response['Content-Disposition'] = f'attachment; filename="reporte_{tipo}_sgr.csv"'
     writer = csv.writer(response, delimiter=';')
 
-    # Encabezado institucional exigido en Sección 16 de la guía
     writer.writerow(['SISTEMA DE GESTION DE RESULTADOS (SGR) - ILUSTRE MUNICIPALIDAD DE LA SERENA'])
     writer.writerow(['Fecha y Hora de Generacion:', fecha_gen, 'Delegacion:', delegacion_nombre, 'Trimestre:', trimestre_str])
     writer.writerow([])
 
     if tipo == 'bitacora':
         writer.writerow(['Fecha y Hora', 'Usuario', 'Modulo', 'Accion', 'Detalle'])
-        for b in BitacoraAuditoria.objects.select_related('usuario').order_by('-fecha_hora'):
+        qs = BitacoraAuditoria.objects.select_related('usuario').order_by('-fecha_hora')
+        if not es_admin_o_verif and func_actual:
+            qs = qs.filter(usuario__delegacion=func_actual.delegacion)
+        for b in qs:
             autor = b.usuario.nombre_completo if b.usuario else 'Sistema'
             writer.writerow([b.fecha_hora.strftime('%d/%m/%Y %H:%M'), autor, b.modulo, b.accion, b.detalle])
     elif tipo == 'sociales':
         writer.writerow(['Codigo', 'Fecha Ingreso', 'Vecino', 'RUT', 'Territorio', 'Requerimiento', 'Visita', 'Informe', 'Beneficio', 'Demora (Dias)', 'Estado'])
-        for gs in GestionSocial.objects.select_related('vecino', 'territorio').order_by('-id'):
+        qs = GestionSocial.objects.select_related('vecino', 'territorio').order_by('-id')
+        if not es_admin_o_verif and func_actual:
+            qs = qs.filter(territorio__delegacion=func_actual.delegacion)
+        for gs in qs:
             writer.writerow([
                 gs.codigo,
                 gs.fecha_ingreso.strftime('%d/%m/%Y'),
@@ -1056,7 +1386,10 @@ def exportar_reporte_csv(request):
             ])
     else:
         writer.writerow(['Codigo', 'Fecha', 'Tipo', 'Solicitante', 'RUT', 'Territorio', 'Responsable', 'Estado Tubo', 'Verificacion'])
-        for a in Actividad.objects.select_related('territorio', 'responsable_tubo').order_by('-id'):
+        qs = Actividad.objects.select_related('territorio', 'responsable_tubo').order_by('-id')
+        if not es_admin_o_verif and func_actual:
+            qs = qs.filter(territorio__delegacion=func_actual.delegacion)
+        for a in qs:
             writer.writerow([
                 a.codigo,
                 a.fecha_actividad.strftime('%d/%m/%Y'),

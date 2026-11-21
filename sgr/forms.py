@@ -1,11 +1,10 @@
-from django import forms
-from .models import AsignacionMeta, Actividad, TuboCarta
-from .models import Vecino, JuntaVecinos, Hito
+import os
 from django import forms
 from django.contrib.auth.models import User
-from .models import Funcionario, Rol
-import os
-from .models import Evidencia
+from .models import (
+    AsignacionMeta, Actividad, TuboCarta, Vecino,
+    JuntaVecinos, Hito, Funcionario, Rol, Evidencia
+)
 
 
 class AsignacionMetaForm(forms.ModelForm):
@@ -67,7 +66,8 @@ class TuboCartaForm(forms.ModelForm):
             'area_derivada': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Ej: Operaciones / SECPLAN'}),
             'fecha_respuesta_compromiso': forms.DateInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}),
         }
-        
+
+
 class VecinoForm(forms.ModelForm):
     class Meta:
         model = Vecino
@@ -83,6 +83,7 @@ class VecinoForm(forms.ModelForm):
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 
+
 class JuntaVecinosForm(forms.ModelForm):
     class Meta:
         model = JuntaVecinos
@@ -95,6 +96,7 @@ class JuntaVecinosForm(forms.ModelForm):
             'fecha_constitucion': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'activa': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
 
 class HitoForm(forms.ModelForm):
     class Meta:
@@ -112,10 +114,11 @@ class HitoForm(forms.ModelForm):
             'estado': forms.Select(attrs={'class': 'form-select'}),
         }
 
+
 class FuncionarioCreateForm(forms.ModelForm):
     username = forms.CharField(
         label="Nombre de Usuario Institucional",
-        max_length=150, 
+        max_length=150,
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ej: jperezo'})
     )
     roles = forms.ModelMultipleChoiceField(
@@ -148,7 +151,8 @@ class FuncionarioCreateForm(forms.ModelForm):
         if User.objects.filter(email=correo).exists() or Funcionario.objects.filter(correo=correo).exists():
             raise forms.ValidationError("Este correo institucional ya se encuentra registrado.")
         return correo
-    
+
+
 class ActividadRegistroForm(forms.ModelForm):
     archivo_evidencia = forms.FileField(
         required=False,
@@ -186,6 +190,14 @@ class ActividadRegistroForm(forms.ModelForm):
             'area_apoyo': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Ej: DISERCO / Seguridad Ciudadana'}),
             'fecha_compromiso': forms.DateInput(attrs={'type': 'date', 'class': 'form-control form-control-sm'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['hito'].required = False
+        self.fields['hito'].empty_label = "--- Sin hito asociado (Opcional) ---"
+        self.fields['vecino_solicitante'].required = False
+        self.fields['vecino_solicitante'].empty_label = "--- Sin vecino registrado (Opcional) ---"
+        self.fields['responsable_tubo'].required = False
 
     def clean_archivo_evidencia(self):
         archivo = self.cleaned_data.get('archivo_evidencia')

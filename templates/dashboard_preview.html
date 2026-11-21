@@ -2,14 +2,14 @@
 {% load static %}
 
 {% block content %}
-<!-- Encabezado con Logo Blanco Institucional y Filtros Reales -->
+<!-- Encabezado Institucional y Filtros Reales según Rol -->
 <div class="muni-card mb-4 animate-fade-up">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
         <div class="d-flex align-items-center gap-3">
             <img src="{% static 'img/logo_blanco.jpg' %}" alt="Logo La Serena" style="height: 58px; border-radius: 8px;">
             <div>
                 <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
-                    Delegación {{ delegacion_actual.nombre|default:"General La Serena" }}
+                    {{ titulo_dashboard }}
                 </h4>
                 <small class="text-muted">
                     <i class="bi bi-clock-history me-1"></i>Datos en vivo desde Base de Datos · Meta esperada hoy: <strong>{{ meta_esperada_hoy }}%</strong> (Tope 120%)
@@ -18,16 +18,19 @@
         </div>
         <div class="d-flex gap-2">
             <a href="{% url 'dashboard_inicio' %}" class="btn-muni-outline text-decoration-none"><i class="bi bi-funnel me-1"></i>Limpiar filtros</a>
-            <a href="{% url 'actividades_list' %}" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Nueva Actividad / Compromiso</a>
+            {% if request.user.is_superuser or request.user.funcionario.puede_operar_flujos %}
+                <a href="{% url 'actividades_list' %}" class="btn-muni"><i class="bi bi-plus-circle-fill"></i> Nueva Actividad</a>
+            {% elif request.user.funcionario.puede_verificar %}
+                <a href="{% url 'bandeja_verificacion' %}" class="btn-muni"><i class="bi bi-patch-check-fill"></i> Ir a Verificación</a>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Contenedor de Filtros y Buscador Separados -->
+    <!-- Contenedor de Filtros y Buscador -->
     <div class="row g-3">
-        <!-- Filtros del Dashboard -->
         <div class="col-md-9">
             <form method="get" class="row g-3 m-0">
-                <div class="col-md-4">
+                <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
                     <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
                     <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
                         {% for t in trimestres %}
@@ -35,6 +38,8 @@
                         {% endfor %}
                     </select>
                 </div>
+
+                {% if not es_vista_personal %}
                 <div class="col-md-4">
                     <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
                     <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -46,7 +51,9 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-4">
+                {% endif %}
+
+                <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
                     <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
                     <select name="territorio" class="form-select form-select-sm" onchange="this.form.submit()">
                         <option value="">Todos los territorios</option>
@@ -58,7 +65,6 @@
             </form>
         </div>
 
-        <!-- Buscador Rápido conectado al Tubo de Compromisos -->
         <div class="col-md-3">
             <form action="{% url 'tubo_compromisos' %}" method="get" class="m-0">
                 <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
@@ -76,7 +82,7 @@
     <div class="col-md-3 animate-fade-up delay-1">
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
-                <span class="text-muted small fw-semibold">Cumplimiento General</span>
+                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mi Cumplimiento{% else %}Cumplimiento General{% endif %}</span>
                 <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ cumplimiento_general }}%</h2>
                 <small class="text-success fw-semibold"><i class="bi bi-arrow-up-right"></i> Esperado al día: {{ meta_esperada_hoy }}%</small>
             </div>
@@ -87,7 +93,7 @@
     <div class="col-md-3 animate-fade-up delay-2">
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
-                <span class="text-muted small fw-semibold">Actividades Aprobadas</span>
+                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Aprobadas{% else %}Actividades Aprobadas{% endif %}</span>
                 <h2 class="fw-extrabold mb-0 mt-1">{{ total_aprobadas }}</h2>
                 <small class="text-muted">Aprobadas y ponderan</small>
             </div>
@@ -109,7 +115,7 @@
     <div class="col-md-3 animate-fade-up delay-4">
         <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
             <div>
-                <span class="text-muted small fw-semibold">Compromisos Vencidos</span>
+                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Vencidos{% else %}Compromisos Vencidos{% endif %}</span>
                 <h2 class="fw-extrabold mb-0 mt-1 text-danger">{{ total_vencidos }}</h2>
                 <small class="text-danger fw-semibold">En el Tubo de gestión</small>
             </div>
@@ -118,12 +124,57 @@
     </div>
 </div>
 
-<!-- Sección Central con Registros Reales -->
+<!-- ==================== SECCIÓN DE GRÁFICOS REALES (CHART.JS) ==================== -->
+<div class="row g-4 mb-4">
+    <!-- Gráfico 1: Estado del Tubo -->
+    <div class="col-lg-4 animate-fade-up delay-1">
+        <div class="muni-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-fill me-2" style="color: var(--muni-crimson);"></i>Estado del Tubo</h6>
+                <span class="badge bg-light text-dark border">Compromisos</span>
+            </div>
+            <div style="position: relative; height: 260px;">
+                <canvas id="chartEstadoTubo"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico 2: Cumplimiento de Metas (Esperado vs Real) -->
+    <div class="col-lg-4 animate-fade-up delay-2">
+        <div class="muni-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-bullseye me-2" style="color: var(--muni-crimson);"></i>Metas: Esperado vs. Real</h6>
+                <span class="badge bg-light text-dark border">Tope 120%</span>
+            </div>
+            <div style="position: relative; height: 260px;">
+                <canvas id="chartMetasComparativa"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráfico 3: Carga por Funcionario (Equipo) o Verificación Personal (Funcionario) -->
+    <div class="col-lg-4 animate-fade-up delay-3">
+        <div class="muni-card h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0">
+                    <i class="bi bi-people-fill me-2" style="color: var(--muni-crimson);"></i>
+                    {% if es_vista_personal %}Estado de Mis Actividades{% else %}Carga del Tubo por Funcionario{% endif %}
+                </h6>
+                <span class="badge bg-light text-dark border">{% if es_vista_personal %}Verificación{% else %}Equipo{% endif %}</span>
+            </div>
+            <div style="position: relative; height: 260px;">
+                <canvas id="chartTercero"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sección Inferior: Detalle de Metas, Tabla del Tubo y Semáforo -->
 <div class="row g-4">
     <div class="col-lg-7 animate-fade-up delay-2">
         <div class="muni-card h-100">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-steps me-2" style="color: var(--muni-crimson);"></i>Cumplimiento de Metas Asignadas (BD Real)</h6>
+                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-steps me-2" style="color: var(--muni-crimson);"></i>Detalle de Metas Asignadas (BD Real)</h6>
                 <span class="badge bg-light text-dark border">Tope máx: 120%</span>
             </div>
 
@@ -182,7 +233,10 @@
     <!-- Semáforo Calculado en Vivo por Funcionario -->
     <div class="col-lg-5 animate-fade-up delay-3">
         <div class="muni-card h-100">
-            <h6 class="fw-bold mb-3"><i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>Semáforo de Avance por Funcionario</h6>
+            <h6 class="fw-bold mb-3">
+                <i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>
+                {% if es_vista_personal %}Mi Semáforo de Cumplimiento{% else %}Semáforo de Avance por Funcionario{% endif %}
+            </h6>
             <p class="small text-muted mb-3">Calculado en tiempo real según metas asignadas y actividades en estado <strong>Aprobada y pondera</strong>.</p>
 
             {% for item in semaforo_funcionarios %}
@@ -199,8 +253,120 @@
                         <span class="semaforo-dot semaforo-{{ item.color_semaforo }}"></span>
                     </div>
                 </div>
+            {% empty %}
+                <p class="text-muted small text-center py-4">No hay funcionarios con metas asignadas en este trimestre.</p>
             {% endfor %}
         </div>
     </div>
 </div>
+
+<!-- Datos JSON seguros desde Django para Chart.js -->
+{{ chart_tubo_data|json_script:"chart-tubo-data" }}
+{{ chart_metas_data|json_script:"chart-metas-data" }}
+{{ chart_tercero_data|json_script:"chart-tercero-data" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const tuboData = JSON.parse(document.getElementById('chart-tubo-data').textContent);
+    const metasData = JSON.parse(document.getElementById('chart-metas-data').textContent);
+    const terceroData = JSON.parse(document.getElementById('chart-tercero-data').textContent);
+
+    // 1. Gráfico Estado del Tubo
+    new Chart(document.getElementById('chartEstadoTubo'), {
+        type: 'bar',
+        data: {
+            labels: tuboData.labels,
+            datasets: [{
+                label: 'Registros',
+                data: tuboData.values,
+                backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#15803d', '#dc2626'],
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } }
+            }
+        }
+    });
+
+    // 2. Gráfico Cumplimiento de Metas (Esperado vs Real)
+    new Chart(document.getElementById('chartMetasComparativa'), {
+        type: 'bar',
+        data: {
+            labels: metasData.labels.length ? metasData.labels : ['Sin metas asignadas'],
+            datasets: [
+                {
+                    label: 'Esperado hoy (%)',
+                    data: metasData.esperadas.length ? metasData.esperadas : [0],
+                    backgroundColor: 'rgba(108, 117, 125, 0.35)',
+                    borderRadius: 4
+                },
+                {
+                    label: 'Real (%)',
+                    data: metasData.reales.length ? metasData.reales : [0],
+                    backgroundColor: '#9E1B2A',
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } },
+            scales: {
+                x: { beginAtZero: true, max: 120, ticks: { callback: v => v + '%' } }
+            }
+        }
+    });
+
+    // 3. Gráfico Adaptado al Rol (Carga del Tubo por Funcionario o Dona de Verificación)
+    if (terceroData.tipo === 'dona_verificacion') {
+        new Chart(document.getElementById('chartTercero'), {
+            type: 'doughnut',
+            data: {
+                labels: terceroData.labels,
+                datasets: [{
+                    data: terceroData.values,
+                    backgroundColor: ['#15803d', '#0dcaf0', '#f59e0b', '#fd7e14', '#dc2626'],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } }
+            }
+        });
+    } else {
+        new Chart(document.getElementById('chartTercero'), {
+            type: 'bar',
+            data: {
+                labels: terceroData.labels.length ? terceroData.labels : ['Sin compromisos'],
+                datasets: [
+                    { label: 'Pendiente', data: terceroData.pendientes.length ? terceroData.pendientes : [0], backgroundColor: '#f59e0b' },
+                    { label: 'En Proceso', data: terceroData.en_proceso.length ? terceroData.en_proceso : [0], backgroundColor: '#3b82f6' },
+                    { label: 'Realizado/Cerrado', data: terceroData.cerrados.length ? terceroData.cerrados : [0], backgroundColor: '#15803d' },
+                    { label: 'Vencido', data: terceroData.vencidos.length ? terceroData.vencidos : [0], backgroundColor: '#dc2626' }
+                ]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+                scales: {
+                    x: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+                    y: { stacked: true }
+                }
+            }
+        });
+    }
+</script>
 {% endblock %}
