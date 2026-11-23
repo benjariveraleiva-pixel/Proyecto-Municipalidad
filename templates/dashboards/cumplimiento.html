@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-pie-chart-fill me-2"></i>Dashboard de Cumplimiento General
+            </h4>
+            <small class="text-muted">Análisis detallado de avance por funcionario y metas asignadas en base al 100%</small>
+        </div>
+        <a href="{% url 'dashboard_inicio' %}{{ query_filtros }}" class="btn-muni-outline text-decoration-none">
+            <i class="bi bi-arrow-left me-1"></i>Volver al Dashboard Principal
+        </a>
+    </div>
+
+    <!-- Navegación rápida entre los 4 dashboards -->
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="{% url 'dashboard_cumplimiento' %}{{ query_filtros }}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-granate);"><i class="bi bi-pie-chart-fill me-1"></i>Cumplimiento</a>
+        <a href="{% url 'dashboard_aprobadas' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-check-fill me-1"></i>Aprobadas</a>
+        <a href="{% url 'dashboard_pendientes' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-hourglass-split me-1"></i>Pendientes</a>
+        <a href="{% url 'dashboard_vencidos' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-exclamation-triangle-fill me-1"></i>Vencidos</a>
+    </div>
+
+    <!-- Filtros -->
+    <form method="get" class="row g-3">
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for t in trimestres %}
+                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Delegación</label>
+            {% if puede_filtrar_delegacion %}
+                <select name="delegacion" class="form-select form-select-sm"
+                        onchange="const f = this.form.querySelector('select[name=\'funcionario\']'); if (f) f.value = ''; this.form.submit();">
+                    <option value="">Todas las delegaciones</option>
+                    {% for delg in delegaciones_lista %}
+                        <option value="{{ delg.id }}" {% if filtro_delegacion == delg.id|stringformat:"s" %}selected{% endif %}>{{ delg.nombre }}</option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <select class="form-select form-select-sm" disabled><option selected>{{ delegacion_actual.nombre|default:"La Serena" }}</option></select>
+            {% endif %}
+        </div>
+        {% if not es_vista_personal %}
+        <div class="col-md-4">
+            <label class="form-label small fw-bold text-muted mb-1">Funcionario</label>
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios_lista %}
+                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<!-- KPIs de Cumplimiento -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Cumplimiento Real (Base 100%)</span>
+            <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ cumplimiento_general }}%</h2>
+            <small class="text-muted">Promedio normalizado del alcance actual</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Meta Esperada a Hoy</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-dark">{{ meta_esperada_hoy }}%</h2>
+            <small class="text-muted">Según avance del trimestre activo</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Brecha vs. Esperado</span>
+            <h2 class="fw-extrabold mb-0 mt-1 {% if brecha_general >= 0 %}text-success{% else %}text-danger{% endif %}">
+                {% if brecha_general > 0 %}+{% endif %}{{ brecha_general }}%
+            </h2>
+            <small class="text-muted">{% if brecha_general >= 0 %}Por sobre lo esperado{% else %}Bajo la meta esperada hoy{% endif %}</small>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico y Ranking -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-2" style="color: var(--muni-crimson);"></i>Cumplimiento Real vs. Esperado por Funcionario</h6>
+            <div style="position: relative; height: 290px;">
+                <canvas id="chartCumplimientoDetalle"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3"><i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>Ranking Semáforo (Base 100%)</h6>
+            {% for item in semaforo_funcionarios %}
+                <div class="d-flex align-items-center justify-content-between p-2 mb-2 rounded-3 border bg-light bg-opacity-50">
+                    <div>
+                        <div class="fw-bold small">{{ item.funcionario.nombre_completo }}</div>
+                        <small class="text-muted">{{ item.funcionario.delegacion.nombre }} · {{ item.cantidad_metas }} metas · Pond: {{ item.ponderacion_asignada }}%</small>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fw-bold">{{ item.cumplimiento }}%</span>
+                        <span class="semaforo-dot semaforo-{{ item.color_semaforo }}"></span>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="text-muted small text-center py-4">No hay funcionarios con metas asignadas.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Tabla Detallada de Metas -->
+<div class="muni-card">
+    <h6 class="fw-bold mb-3"><i class="bi bi-table me-2" style="color: var(--muni-crimson);"></i>Desglose Completo de Metas Asignadas</h6>
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Funcionario</th>
+                    <th>Delegación</th>
+                    <th>Meta</th>
+                    <th>Aprobadas / Objetivo</th>
+                    <th>Ponderación</th>
+                    <th>Cumplimiento</th>
+                    <th>Aporte Ponderado</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asig in asignaciones_metas %}
+                <tr>
+                    <td class="fw-semibold">{{ asig.funcionario.nombre_completo }}</td>
+                    <td>{{ asig.funcionario.delegacion.nombre }}</td>
+                    <td><span class="badge bg-light text-dark border me-1">{{ asig.meta.codigo }}</span>{{ asig.meta.nombre }}</td>
+                    <td><strong>{{ asig.actividades_aprobadas_count }}</strong> / {{ asig.cantidad_objetivo }}</td>
+                    <td>{{ asig.ponderacion }}%</td>
+                    <td style="min-width: 150px;">
+                        <div class="d-flex justify-content-between small fw-bold mb-1">
+                            <span>{{ asig.porcentaje_cumplimiento_aplicable }}%</span>
+                        </div>
+                        <div class="progress-muni">
+                            <div class="progress-bar-granate" style="width: {{ asig.porcentaje_cumplimiento_aplicable }}%;"></div>
+                        </div>
+                    </td>
+                    <td class="fw-bold" style="color: var(--muni-crimson);">{{ asig.resultado_ponderado|floatformat:1 }}%</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">No existen metas asignadas para estos filtros.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{ chart_cumplimiento|json_script:"chart-cumplimiento-json" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const cData = JSON.parse(document.getElementById('chart-cumplimiento-json').textContent);
+    new Chart(document.getElementById('chartCumplimientoDetalle'), {
+        type: 'bar',
+        data: {
+            labels: cData.labels.length ? cData.labels : ['Sin datos'],
+            datasets: [
+                { label: 'Esperado hoy (%)', data: cData.esperado.length ? cData.esperado : [0], backgroundColor: 'rgba(108, 117, 125, 0.35)', borderRadius: 4 },
+                { label: 'Cumplimiento Real (%)', data: cData.reales.length ? cData.reales : [0], backgroundColor: '#9E1B2A', borderRadius: 4 }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } } }
+        }
+    });
+</script>
+{% endblock %}

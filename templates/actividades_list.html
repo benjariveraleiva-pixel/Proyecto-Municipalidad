@@ -33,11 +33,39 @@
             <div class="col-md-3"><label class="small fw-bold">Origen</label>{{ form.origen }}</div>
             <div class="col-md-5"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
 
-            <div class="col-md-3">
-                <label class="small fw-bold">Vecino Registrado <span class="text-muted fw-normal">(Opcional)</span></label>
+            <!-- Buscador + Desplegable en vivo por RUT + Botón Nuevo Vecino -->
+            <div class="col-md-4">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="small fw-bold mb-0">Vecino Registrado <span class="text-muted fw-normal">(Buscar por RUT)</span></label>
+                    <button type="button" class="btn btn-sm py-0 px-2 text-white fw-semibold"
+                            style="background: var(--muni-crimson); font-size: 0.72rem;"
+                            data-bs-toggle="modal" data-bs-target="#modalNuevoVecino">
+                        <i class="bi bi-person-plus-fill me-1"></i>Nuevo
+                    </button>
+                </div>
+
                 {{ form.vecino_solicitante }}
+
+                <div class="position-relative" id="contenedorBuscadorVecino">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" id="buscadorVecinoRut" class="form-control form-control-sm"
+                               placeholder="Escriba RUT (ej: 22022...)" autocomplete="off">
+                        <button type="button" class="btn btn-outline-secondary d-none" id="btnLimpiarVecino" title="Quitar vecino seleccionado">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" id="btnToggleListaVecinos" title="Ver todos los RUT">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                    </div>
+
+                    <div id="listaVecinosRut" class="list-group shadow-sm position-absolute w-100 mt-1 d-none"
+                         style="z-index: 1050; max-height: 230px; overflow-y: auto; border: 1px solid #dee2e6; background: #fff;">
+                    </div>
+                </div>
             </div>
-            <div class="col-md-4"><label class="small fw-bold">Nombre Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
+
+            <div class="col-md-3"><label class="small fw-bold">Nombre Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
             <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
             <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
 
@@ -172,4 +200,270 @@
         </table>
     </div>
 </div>
+
+<!-- ==================== MODAL REGISTRO RÁPIDO DE VECINO ==================== -->
+<div class="modal fade" id="modalNuevoVecino" tabindex="-1" aria-labelledby="modalNuevoVecinoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header text-white" style="background: var(--muni-granate);">
+                <h6 class="modal-title fw-bold" id="modalNuevoVecinoLabel">
+                    <i class="bi bi-person-plus-fill me-2"></i>Registro Rápido de Vecino
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <form id="formRegistroRapidoVecino">
+                <div class="modal-body">
+                    <div id="alertaErrorVecino" class="alert alert-danger py-2 small d-none"></div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre Completo <span class="text-danger">*</span></label>
+                        <input type="text" id="modalVecinoNombre" class="form-control form-control-sm" placeholder="Ej: Juan Carlos Pérez González" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">RUT <span class="text-danger">*</span></label>
+                            <input type="text" id="modalVecinoRut" class="form-control form-control-sm" placeholder="Ej: 12.345.678-9" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Teléfono <span class="text-danger">*</span></label>
+                            <input type="text" id="modalVecinoTelefono" class="form-control form-control-sm" placeholder="Ej: +56912345678" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-1">
+                        <label class="form-label small fw-bold">Territorio <span class="text-danger">*</span></label>
+                        <select id="modalVecinoTerritorio" class="form-select form-select-sm" required>
+                            <option value="">Seleccione un territorio...</option>
+                            {% for ter in territorios_modal %}
+                                <option value="{{ ter.id }}">{{ ter.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text" style="font-size: 0.74rem;">Se toma automáticamente el territorio elegido en el formulario si ya seleccionaste uno.</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" id="btnGuardarVecinoRapido" class="btn-muni py-1 px-3">
+                        <i class="bi bi-check-circle-fill"></i> Guardar y Seleccionar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{{ vecinos_datos|json_script:"vecinos-datos-json" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let vecinosLista = JSON.parse(document.getElementById('vecinos-datos-json').textContent);
+
+    const selectVecinoReal = document.getElementById('id_vecino_solicitante');
+    const inputBuscarRut = document.getElementById('buscadorVecinoRut');
+    const listaDropdown = document.getElementById('listaVecinosRut');
+    const btnLimpiar = document.getElementById('btnLimpiarVecino');
+    const btnToggle = document.getElementById('btnToggleListaVecinos');
+    const contenedor = document.getElementById('contenedorBuscadorVecino');
+
+    const inputNombre = document.getElementById('id_solicitante_nombre');
+    const inputRut = document.getElementById('id_solicitante_rut');
+    const inputTelefono = document.getElementById('id_solicitante_telefono');
+    const selectTerritorioMain = document.getElementById('id_territorio');
+
+    const modalEl = document.getElementById('modalNuevoVecino');
+    const formRapido = document.getElementById('formRegistroRapidoVecino');
+    const alertaError = document.getElementById('alertaErrorVecino');
+    const modalNombre = document.getElementById('modalVecinoNombre');
+    const modalRut = document.getElementById('modalVecinoRut');
+    const modalTelefono = document.getElementById('modalVecinoTelefono');
+    const modalTerritorio = document.getElementById('modalVecinoTerritorio');
+    const btnGuardarRapido = document.getElementById('btnGuardarVecinoRapido');
+
+    function normalizarRut(str) {
+        return (str || '').toUpperCase().replace(/[^0-9K]/g, '');
+    }
+
+    function ordenarVecinosPorRut() {
+        vecinosLista.sort((a, b) => a.rut.localeCompare(b.rut, 'es', { numeric: true }));
+    }
+
+    function seleccionarVecino(vecino) {
+        if (!selectVecinoReal.querySelector(`option[value="${vecino.id}"]`)) {
+            const opt = new Option(`${vecino.rut} · ${vecino.nombre}`, vecino.id, true, true);
+            selectVecinoReal.add(opt);
+        }
+        selectVecinoReal.value = String(vecino.id);
+
+        inputBuscarRut.value = `${vecino.rut} · ${vecino.nombre}`;
+        btnLimpiar.classList.remove('d-none');
+        listaDropdown.classList.add('d-none');
+
+        if (inputNombre) inputNombre.value = vecino.nombre;
+        if (inputRut) inputRut.value = vecino.rut;
+        if (inputTelefono) inputTelefono.value = vecino.telefono || '';
+        if (selectTerritorioMain && !selectTerritorioMain.value && vecino.territorio_id) {
+            selectTerritorioMain.value = String(vecino.territorio_id);
+        }
+    }
+
+    function limpiarSeleccionVecino() {
+        selectVecinoReal.value = '';
+        inputBuscarRut.value = '';
+        btnLimpiar.classList.add('d-none');
+        if (inputNombre) inputNombre.value = '';
+        if (inputRut) inputRut.value = '';
+        if (inputTelefono) inputTelefono.value = '';
+    }
+
+    function renderizarLista(filtroTexto) {
+        const qNorm = normalizarRut(filtroTexto);
+        let filtrados = vecinosLista;
+
+        if (qNorm.length > 0) {
+            // Primero filtra estrictamente por RUT que empiecen con lo escrito
+            filtrados = vecinosLista.filter(v => normalizarRut(v.rut).startsWith(qNorm));
+            // Si ninguno empieza igual, busca coincidencias contenidas en el RUT
+            if (filtrados.length === 0) {
+                filtrados = vecinosLista.filter(v => normalizarRut(v.rut).includes(qNorm));
+            }
+        }
+
+        listaDropdown.innerHTML = '';
+
+        if (filtrados.length === 0) {
+            const vacio = document.createElement('div');
+            vacio.className = 'list-group-item py-2 px-3 small text-muted';
+            vacio.innerHTML = `
+                <div class="mb-1">No se encontró ningún vecino con ese RUT.</div>
+                <button type="button" class="btn btn-sm py-0 px-2 text-white fw-semibold" style="background: var(--muni-crimson);" id="btnCrearDesdeNoEncontrado">
+                    <i class="bi bi-person-plus-fill me-1"></i>Registrar este vecino ahora
+                </button>
+            `;
+            listaDropdown.appendChild(vacio);
+
+            const btnRapido = vacio.querySelector('#btnCrearDesdeNoEncontrado');
+            btnRapido.addEventListener('click', function() {
+                listaDropdown.classList.add('d-none');
+                modalRut.value = inputBuscarRut.value.trim();
+                const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modalInstance.show();
+            });
+        } else {
+            filtrados.forEach(v => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action py-2 px-3 small text-start';
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong style="color: var(--muni-granate);">${v.rut}</strong>
+                        <span class="text-muted" style="font-size: 0.74rem;">${v.telefono || ''}</span>
+                    </div>
+                    <div class="text-dark">${v.nombre}</div>
+                `;
+                item.addEventListener('click', () => seleccionarVecino(v));
+                listaDropdown.appendChild(item);
+            });
+        }
+
+        listaDropdown.classList.remove('d-none');
+    }
+
+    inputBuscarRut.addEventListener('focus', function() {
+        const valorFiltro = selectVecinoReal.value ? '' : this.value;
+        renderizarLista(valorFiltro);
+    });
+
+    inputBuscarRut.addEventListener('input', function() {
+        if (selectVecinoReal.value) {
+            selectVecinoReal.value = '';
+            btnLimpiar.classList.add('d-none');
+        }
+        renderizarLista(this.value);
+    });
+
+    btnToggle.addEventListener('click', function() {
+        if (listaDropdown.classList.contains('d-none')) {
+            const valorFiltro = selectVecinoReal.value ? '' : inputBuscarRut.value;
+            renderizarLista(valorFiltro);
+            inputBuscarRut.focus();
+        } else {
+            listaDropdown.classList.add('d-none');
+        }
+    });
+
+    btnLimpiar.addEventListener('click', function() {
+        limpiarSeleccionVecino();
+        inputBuscarRut.focus();
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!contenedor.contains(e.target)) {
+            listaDropdown.classList.add('d-none');
+        }
+    });
+
+    // Si el formulario recargó con un vecino ya elegido, reflejarlo en la caja
+    if (selectVecinoReal.value) {
+        const actual = vecinosLista.find(v => String(v.id) === String(selectVecinoReal.value));
+        if (actual) {
+            inputBuscarRut.value = `${actual.rut} · ${actual.nombre}`;
+            btnLimpiar.classList.remove('d-none');
+        }
+    }
+
+    // Sincronizar territorio y limpiar alertas al abrir el modal
+    modalEl.addEventListener('show.bs.modal', function() {
+        alertaError.classList.add('d-none');
+        alertaError.textContent = '';
+        if (selectTerritorioMain && selectTerritorioMain.value) {
+            modalTerritorio.value = selectTerritorioMain.value;
+        }
+    });
+
+    // Guardar nuevo vecino por AJAX sin perder el formulario
+    formRapido.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        alertaError.classList.add('d-none');
+        btnGuardarRapido.disabled = true;
+
+        const formData = new FormData();
+        formData.append('nombre_completo', modalNombre.value.trim());
+        formData.append('rut', modalRut.value.trim());
+        formData.append('telefono', modalTelefono.value.trim());
+        formData.append('territorio_id', modalTerritorio.value);
+
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        try {
+            const resp = await fetch("{% url 'vecino_registro_rapido' %}", {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken },
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (!data.ok) {
+                alertaError.textContent = data.error || 'No se pudo registrar el vecino.';
+                alertaError.classList.remove('d-none');
+                return;
+            }
+
+            vecinosLista.push(data.vecino);
+            ordenarVecinosPorRut();
+            seleccionarVecino(data.vecino);
+
+            formRapido.reset();
+            bootstrap.Modal.getInstance(modalEl).hide();
+        } catch (err) {
+            alertaError.textContent = 'Error de comunicación con el servidor. Intente nuevamente.';
+            alertaError.classList.remove('d-none');
+        } finally {
+            btnGuardarRapido.disabled = false;
+        }
+    });
+});
+</script>
 {% endblock %}

@@ -11,14 +11,14 @@ from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.mail import send_mail
 from django.db.models import Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import ListView, CreateView, UpdateView
 
 from .models import (
-    Funcionario, Trimestre, Territorio, AsignacionMeta, Actividad,
+    Delegacion, Funcionario, Trimestre, Territorio, AsignacionMeta, Actividad,
     TuboCarta, BitacoraAuditoria, HistorialTubo, Vecino, JuntaVecinos,
     Hito, Evidencia, GestionSocial
 )
@@ -30,7 +30,7 @@ from .forms import (
 
 
 # ==============================================================================
-# CONTROL DE PERMISOS POR ROL (RBAC - PUNTO 3)
+# CONTROL DE PERMISOS POR ROL (RBAC)
 # ==============================================================================
 def usuario_tiene_algun_rol(user, roles_permitidos):
     if not user.is_authenticated:
@@ -156,7 +156,7 @@ def cerrar_sesion(request):
 
 
 # ==============================================================================
-# DASHBOARD DIFERENCIADO POR ROL CON GRÁFICOS REALES (PUNTO 4)
+# DASHBOARD DIFERENCIADO POR ROL CON FILTRO POR DELEGACIÓN Y GRÁFICOS REALES
 # ==============================================================================
 @login_required(login_url='login')
 def dashboard_inicio(request):
@@ -171,9 +171,10 @@ def dashboard_inicio(request):
     es_delegado = bool(func_actual and func_actual.es_delegado and not es_admin)
     es_verificador = bool(func_actual and func_actual.es_verificador and not es_admin and not es_delegado)
     es_vista_personal = bool(func_actual and func_actual.es_solo_funcionario)
+    puede_filtrar_delegacion = bool(es_admin or es_verificador)
 
-    filtro_funcionario = request.GET.get('funcionario', '')
-    filtro_territorio = request.GET.get('territorio', '')
+    filtro_delegacion = request.GET.get('delegacion', '').strip()
+    filtro_funcionario = request.GET.get('funcionario', '').strip()
     filtro_q = request.GET.get('q', '').strip()
 
     # Actualizar automáticamente compromisos vencidos
@@ -190,24 +191,28 @@ def dashboard_inicio(request):
         asignaciones_qs = asignaciones_qs.filter(trimestre=trimestre_activo)
         actividades_qs = actividades_qs.filter(meta_asignada__trimestre=trimestre_activo)
 
+    delegaciones_lista = Delegacion.objects.filter(activa=True).order_by('nombre')
+
     # Alcance automático según Rol
     if es_vista_personal and func_actual:
         modo_dashboard = 'PERSONAL'
         titulo_dashboard = f"Mi Panel de Gestión Personal · {func_actual.nombre_completo}"
-        funcionarios_lista = Funcionario.objects.filter(id=func_actual.id).select_related('cargo')
-        territorios_lista = Territorio.objects.filter(delegacion=delegacion_actual) if delegacion_actual else Territorio.objects.all()
+        funcionarios_lista = Funcionario.objects.filter(id=func_actual.id).select_related('cargo', 'delegacion')
+        delegaciones_lista = Delegacion.objects.filter(id=delegacion_actual.id) if delegacion_actual else Delegacion.objects.none()
 
         actividades_qs = actividades_qs.filter(
             Q(funcionario_autor=func_actual) | Q(responsable_tubo=func_actual)
         )
         asignaciones_qs = asignaciones_qs.filter(funcionario=func_actual)
         cartas_qs = cartas_qs.filter(responsable_seguimiento=func_actual)
+        filtro_delegacion = str(delegacion_actual.id) if delegacion_actual else ''
         filtro_funcionario = str(func_actual.id)
     elif es_delegado and delegacion_actual:
         modo_dashboard = 'DELEGACION'
         titulo_dashboard = f"Panel de Delegación {delegacion_actual.nombre}"
-        funcionarios_lista = Funcionario.objects.filter(delegacion=delegacion_actual).select_related('cargo')
-        territorios_lista = Territorio.objects.filter(delegacion=delegacion_actual)
+        funcionarios_lista = Funcionario.objects.filter(delegacion=delegacion_actual).select_related('cargo', 'delegacion').order_by('nombres')
+        delegaciones_lista = Delegacion.objects.filter(id=delegacion_actual.id)
+        filtro_delegacion = str(delegacion_actual.id)
 
         actividades_qs = actividades_qs.filter(
             Q(territorio__delegacion=delegacion_actual) |
@@ -219,23 +224,41 @@ def dashboard_inicio(request):
     elif es_verificador:
         modo_dashboard = 'VERIFICACION'
         titulo_dashboard = "Panel de Verificación y Control de Evidencias"
-        funcionarios_lista = Funcionario.objects.select_related('cargo').all()
-        territorios_lista = Territorio.objects.all()
+        funcionarios_lista = Funcionario.objects.select_related('cargo', 'delegacion').order_by('nombres')
     else:
         modo_dashboard = 'GLOBAL'
         titulo_dashboard = "Panel Global · Coordinación de Delegaciones La Serena"
-        funcionarios_lista = Funcionario.objects.select_related('cargo').all()
-        territorios_lista = Territorio.objects.all()
+        funcionarios_lista = Funcionario.objects.select_related('cargo', 'delegacion').order_by('nombres')
 
-    # Filtros manuales del usuario (si no está en modo personal bloqueado)
+    # Filtro por Delegación (Admin y Verificador)
+    if puede_filtrar_delegacion and filtro_delegacion:
+        delegacion_filtrada = delegaciones_lista.filter(id=filtro_delegacion).first()
+        if delegacion_filtrada:
+            delegacion_actual = delegacion_filtrada
+            titulo_dashboard = f"Panel de Delegación {delegacion_filtrada.nombre}"
+            funcionarios_lista = funcionarios_lista.filter(delegacion=delegacion_filtrada)
+            actividades_qs = actividades_qs.filter(
+                Q(funcionario_autor__delegacion=delegacion_filtrada) |
+                Q(responsable_tubo__delegacion=delegacion_filtrada) |
+                Q(territorio__delegacion=delegacion_filtrada)
+            )
+            asignaciones_qs = asignaciones_qs.filter(funcionario__delegacion=delegacion_filtrada)
+            cartas_qs = cartas_qs.filter(delegacion=delegacion_filtrada)
+        else:
+            filtro_delegacion = ''
+
+    # Si el funcionario seleccionado no pertenece a la delegación filtrada, limpiar selección
+    if filtro_funcionario and not es_vista_personal:
+        if not funcionarios_lista.filter(id=filtro_funcionario).exists():
+            filtro_funcionario = ''
+
+    # Filtro por Funcionario
     if filtro_funcionario and not es_vista_personal:
         actividades_qs = actividades_qs.filter(
             Q(funcionario_autor_id=filtro_funcionario) | Q(responsable_tubo_id=filtro_funcionario)
         )
         asignaciones_qs = asignaciones_qs.filter(funcionario_id=filtro_funcionario)
-
-    if filtro_territorio:
-        actividades_qs = actividades_qs.filter(territorio_id=filtro_territorio)
+        cartas_qs = cartas_qs.filter(responsable_seguimiento_id=filtro_funcionario)
 
     if filtro_q:
         actividades_qs = actividades_qs.filter(
@@ -257,7 +280,7 @@ def dashboard_inicio(request):
         total_pendientes_verif = actividades_qs.filter(estado_verificacion='PENDIENTE').count()
         total_vencidos = actividades_qs.filter(ingresa_al_tubo=True, estado_tubo='VENCIDO').count()
 
-    # Semáforo real por funcionario
+    # Semáforo real por funcionario (normalizado en base al 100% del usuario)
     semaforo_funcionarios = []
     suma_cumplimientos = 0.0
     funcionarios_para_semaforo = funcionarios_lista
@@ -268,25 +291,34 @@ def dashboard_inicio(request):
         metas_f = AsignacionMeta.objects.filter(funcionario=f, trimestre=trimestre_activo, activa=True)
         if not metas_f.exists():
             continue
+
+        total_ponderacion_f = sum(float(m.ponderacion) for m in metas_f)
         cumplimiento_pond_total = sum(m.resultado_ponderado for m in metas_f)
+
+        if total_ponderacion_f > 0:
+            cumplimiento_base_100 = min(round((cumplimiento_pond_total / total_ponderacion_f) * 100.0, 1), 100.0)
+        else:
+            cumplimiento_base_100 = 0.0
+
         ingresos_f = Actividad.objects.filter(
             funcionario_autor=f, meta_asignada__trimestre=trimestre_activo
         ).count() if trimestre_activo else Actividad.objects.filter(funcionario_autor=f).count()
 
-        if cumplimiento_pond_total >= 80:
+        if cumplimiento_base_100 >= 80:
             color = 'verde'
-        elif cumplimiento_pond_total >= 55:
+        elif cumplimiento_base_100 >= 55:
             color = 'amarillo'
         else:
             color = 'rojo'
 
         semaforo_funcionarios.append({
             'funcionario': f,
-            'cumplimiento_ponderado': round(cumplimiento_pond_total, 1),
+            'cumplimiento_ponderado': cumplimiento_base_100,
+            'ponderacion_asignada': round(total_ponderacion_f, 1),
             'total_ingresos': ingresos_f,
             'color_semaforo': color,
         })
-        suma_cumplimientos += cumplimiento_pond_total
+        suma_cumplimientos += cumplimiento_base_100
 
     cumplimiento_general = round(suma_cumplimientos / len(semaforo_funcionarios), 1) if semaforo_funcionarios else 0.0
     meta_esperada_hoy = trimestre_activo.porcentaje_esperado_hoy if trimestre_activo else 0.0
@@ -393,19 +425,30 @@ def dashboard_inicio(request):
             'clase_badge': 'estado-proceso'
         })
 
+    params_filtros = []
+    if trimestre_activo:
+        params_filtros.append(f"trimestre={trimestre_activo.id}")
+    if filtro_delegacion and puede_filtrar_delegacion:
+        params_filtros.append(f"delegacion={filtro_delegacion}")
+    if filtro_funcionario and not es_vista_personal:
+        params_filtros.append(f"funcionario={filtro_funcionario}")
+    query_filtros = f"?{'&'.join(params_filtros)}" if params_filtros else ""
+
     context = {
         'modo_dashboard': modo_dashboard,
         'titulo_dashboard': titulo_dashboard,
         'es_vista_personal': es_vista_personal,
+        'puede_filtrar_delegacion': puede_filtrar_delegacion,
         'delegacion_actual': delegacion_actual,
         'trimestres': trimestres,
         'trimestre_activo': trimestre_activo,
         'meta_esperada_hoy': meta_esperada_hoy,
+        'delegaciones_lista': delegaciones_lista,
         'funcionarios_lista': funcionarios_lista,
-        'territorios_lista': territorios_lista,
+        'filtro_delegacion': filtro_delegacion,
         'filtro_funcionario': filtro_funcionario,
-        'filtro_territorio': filtro_territorio,
         'filtro_q': filtro_q,
+        'query_filtros': query_filtros,
         'cumplimiento_general': cumplimiento_general,
         'total_aprobadas': total_aprobadas,
         'total_pendientes_verif': total_pendientes_verif,
@@ -418,6 +461,304 @@ def dashboard_inicio(request):
         'chart_tercero_data': chart_tercero_data,
     }
     return render(request, 'dashboard_preview.html', context)
+
+
+# ==============================================================================
+# SUB-DASHBOARDS DEDICADOS POR KPI (DRILL-DOWN DE PANTALLA COMPLETA)
+# ==============================================================================
+def _obtener_base_dashboard(request):
+    trimestres = Trimestre.objects.all().order_by('-anio', '-numero')
+    trimestre_id = request.GET.get('trimestre')
+    trimestre_activo = trimestres.filter(id=trimestre_id).first() if trimestre_id else trimestres.first()
+
+    func_actual = getattr(request.user, 'funcionario', None)
+    delegacion_actual = func_actual.delegacion if func_actual else None
+
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado and not es_admin)
+    es_verificador = bool(func_actual and func_actual.es_verificador and not es_admin and not es_delegado)
+    es_vista_personal = bool(func_actual and func_actual.es_solo_funcionario)
+    puede_filtrar_delegacion = bool(es_admin or es_verificador)
+
+    filtro_delegacion = request.GET.get('delegacion', '').strip()
+    filtro_funcionario = request.GET.get('funcionario', '').strip()
+
+    for act in Actividad.objects.filter(ingresa_al_tubo=True, estado_tubo__in=['PENDIENTE', 'EN_PROCESO']):
+        act.save()
+
+    actividades_qs = Actividad.objects.select_related(
+        'funcionario_autor', 'funcionario_autor__delegacion', 'funcionario_autor__cargo',
+        'responsable_tubo', 'responsable_tubo__delegacion',
+        'territorio', 'territorio__delegacion',
+        'meta_asignada__meta', 'verificado_por'
+    ).prefetch_related('evidencias')
+
+    asignaciones_qs = AsignacionMeta.objects.filter(activa=True).select_related(
+        'funcionario', 'funcionario__cargo', 'funcionario__delegacion', 'meta', 'trimestre'
+    )
+
+    if trimestre_activo:
+        asignaciones_qs = asignaciones_qs.filter(trimestre=trimestre_activo)
+        actividades_qs = actividades_qs.filter(meta_asignada__trimestre=trimestre_activo)
+
+    delegaciones_lista = Delegacion.objects.filter(activa=True).order_by('nombre')
+
+    if es_vista_personal and func_actual:
+        funcionarios_lista = Funcionario.objects.filter(id=func_actual.id).select_related('cargo', 'delegacion')
+        delegaciones_lista = Delegacion.objects.filter(id=delegacion_actual.id) if delegacion_actual else Delegacion.objects.none()
+        actividades_qs = actividades_qs.filter(Q(funcionario_autor=func_actual) | Q(responsable_tubo=func_actual))
+        asignaciones_qs = asignaciones_qs.filter(funcionario=func_actual)
+        filtro_delegacion = str(delegacion_actual.id) if delegacion_actual else ''
+        filtro_funcionario = str(func_actual.id)
+    elif es_delegado and delegacion_actual:
+        funcionarios_lista = Funcionario.objects.filter(delegacion=delegacion_actual).select_related('cargo', 'delegacion').order_by('nombres')
+        delegaciones_lista = Delegacion.objects.filter(id=delegacion_actual.id)
+        filtro_delegacion = str(delegacion_actual.id)
+        actividades_qs = actividades_qs.filter(
+            Q(territorio__delegacion=delegacion_actual) |
+            Q(funcionario_autor__delegacion=delegacion_actual) |
+            Q(responsable_tubo__delegacion=delegacion_actual)
+        )
+        asignaciones_qs = asignaciones_qs.filter(funcionario__delegacion=delegacion_actual)
+    else:
+        funcionarios_lista = Funcionario.objects.select_related('cargo', 'delegacion').order_by('nombres')
+
+    if puede_filtrar_delegacion and filtro_delegacion:
+        delegacion_filtrada = delegaciones_lista.filter(id=filtro_delegacion).first()
+        if delegacion_filtrada:
+            delegacion_actual = delegacion_filtrada
+            funcionarios_lista = funcionarios_lista.filter(delegacion=delegacion_filtrada)
+            actividades_qs = actividades_qs.filter(
+                Q(funcionario_autor__delegacion=delegacion_filtrada) |
+                Q(responsable_tubo__delegacion=delegacion_filtrada) |
+                Q(territorio__delegacion=delegacion_filtrada)
+            )
+            asignaciones_qs = asignaciones_qs.filter(funcionario__delegacion=delegacion_filtrada)
+        else:
+            filtro_delegacion = ''
+
+    if filtro_funcionario and not es_vista_personal:
+        if not funcionarios_lista.filter(id=filtro_funcionario).exists():
+            filtro_funcionario = ''
+
+    if filtro_funcionario and not es_vista_personal:
+        actividades_qs = actividades_qs.filter(
+            Q(funcionario_autor_id=filtro_funcionario) | Q(responsable_tubo_id=filtro_funcionario)
+        )
+        asignaciones_qs = asignaciones_qs.filter(funcionario_id=filtro_funcionario)
+
+    params = []
+    if trimestre_activo:
+        params.append(f"trimestre={trimestre_activo.id}")
+    if filtro_delegacion and puede_filtrar_delegacion:
+        params.append(f"delegacion={filtro_delegacion}")
+    if filtro_funcionario and not es_vista_personal:
+        params.append(f"funcionario={filtro_funcionario}")
+    query_filtros = f"?{'&'.join(params)}" if params else ""
+
+    meta_esperada_hoy = trimestre_activo.porcentaje_esperado_hoy if trimestre_activo else 0.0
+
+    return {
+        'func_actual': func_actual,
+        'es_admin': es_admin,
+        'es_verificador': es_verificador,
+        'es_vista_personal': es_vista_personal,
+        'puede_filtrar_delegacion': puede_filtrar_delegacion,
+        'delegacion_actual': delegacion_actual,
+        'trimestres': trimestres,
+        'trimestre_activo': trimestre_activo,
+        'meta_esperada_hoy': meta_esperada_hoy,
+        'delegaciones_lista': delegaciones_lista,
+        'funcionarios_lista': funcionarios_lista,
+        'filtro_delegacion': filtro_delegacion,
+        'filtro_funcionario': filtro_funcionario,
+        'query_filtros': query_filtros,
+        'actividades_qs': actividades_qs,
+        'asignaciones_qs': asignaciones_qs,
+    }
+
+
+@login_required(login_url='login')
+def dashboard_cumplimiento_view(request):
+    base = _obtener_base_dashboard(request)
+    funcionarios_scope = base['funcionarios_lista']
+    if base['filtro_funcionario'] and not base['es_vista_personal']:
+        funcionarios_scope = funcionarios_scope.filter(id=base['filtro_funcionario'])
+
+    semaforo_funcionarios = []
+    suma_cumplimientos = 0.0
+
+    for f in funcionarios_scope:
+        metas_f = AsignacionMeta.objects.filter(
+            funcionario=f, trimestre=base['trimestre_activo'], activa=True
+        ).select_related('meta')
+        if not metas_f.exists():
+            continue
+
+        total_pond = sum(float(m.ponderacion) for m in metas_f)
+        pond_obtenida = sum(m.resultado_ponderado for m in metas_f)
+        cumpl_base_100 = min(round((pond_obtenida / total_pond) * 100.0, 1), 100.0) if total_pond > 0 else 0.0
+        brecha_f = round(cumpl_base_100 - float(base['meta_esperada_hoy']), 1)
+
+        color = 'verde' if cumpl_base_100 >= 80 else ('amarillo' if cumpl_base_100 >= 55 else 'rojo')
+        semaforo_funcionarios.append({
+            'funcionario': f,
+            'cumplimiento': cumpl_base_100,
+            'ponderacion_asignada': round(total_pond, 1),
+            'cantidad_metas': metas_f.count(),
+            'brecha': brecha_f,
+            'color_semaforo': color,
+        })
+        suma_cumplimientos += cumpl_base_100
+
+    semaforo_funcionarios.sort(key=lambda x: x['cumplimiento'], reverse=True)
+    cumplimiento_general = round(suma_cumplimientos / len(semaforo_funcionarios), 1) if semaforo_funcionarios else 0.0
+    brecha_general = round(cumplimiento_general - float(base['meta_esperada_hoy']), 1)
+
+    chart_cumplimiento = {
+        'labels': [item['funcionario'].nombre_completo for item in semaforo_funcionarios],
+        'reales': [item['cumplimiento'] for item in semaforo_funcionarios],
+        'esperado': [float(base['meta_esperada_hoy']) for _ in semaforo_funcionarios],
+    }
+
+    context = {
+        **base,
+        'seccion_activa': 'cumplimiento',
+        'cumplimiento_general': cumplimiento_general,
+        'brecha_general': brecha_general,
+        'semaforo_funcionarios': semaforo_funcionarios,
+        'asignaciones_metas': base['asignaciones_qs'].order_by('funcionario__nombres', 'meta__codigo'),
+        'chart_cumplimiento': chart_cumplimiento,
+    }
+    return render(request, 'dashboards/cumplimiento.html', context)
+
+
+@login_required(login_url='login')
+def dashboard_aprobadas_view(request):
+    base = _obtener_base_dashboard(request)
+    qs = base['actividades_qs']
+    if base['es_vista_personal'] and base['func_actual']:
+        qs = qs.filter(funcionario_autor=base['func_actual'])
+
+    aprobadas_qs = qs.filter(estado_verificacion='APROBADA_PONDERA').order_by('-fecha_verificacion', '-id')
+    no_ponderan_count = qs.filter(estado_verificacion='APROBADA_NO_PONDERA').count()
+    con_evidencia_count = aprobadas_qs.filter(evidencias__isnull=False).distinct().count()
+
+    conteo_por_func = {}
+    for act in aprobadas_qs:
+        nombre = act.funcionario_autor.nombre_completo
+        conteo_por_func[nombre] = conteo_por_func.get(nombre, 0) + 1
+
+    ordenado = sorted(conteo_por_func.items(), key=lambda x: x[1], reverse=True)
+    chart_aprobadas = {
+        'labels': [x[0] for x in ordenado],
+        'values': [x[1] for x in ordenado],
+    }
+
+    context = {
+        **base,
+        'seccion_activa': 'aprobadas',
+        'actividades_aprobadas': aprobadas_qs,
+        'total_aprobadas': aprobadas_qs.count(),
+        'no_ponderan_count': no_ponderan_count,
+        'con_evidencia_count': con_evidencia_count,
+        'chart_aprobadas': chart_aprobadas,
+    }
+    return render(request, 'dashboards/aprobadas.html', context)
+
+
+@login_required(login_url='login')
+def dashboard_pendientes_view(request):
+    base = _obtener_base_dashboard(request)
+    qs = base['actividades_qs']
+    if base['es_vista_personal'] and base['func_actual']:
+        qs = qs.filter(funcionario_autor=base['func_actual'])
+
+    pendientes_qs = qs.filter(estado_verificacion='PENDIENTE').order_by('fecha_registro', 'id')
+    hoy = timezone.localdate()
+
+    pendientes_lista = []
+    conteo_por_func = {}
+    con_evidencia = 0
+    max_espera = 0
+
+    for act in pendientes_qs:
+        fecha_base = act.fecha_registro.date() if act.fecha_registro else act.fecha_actividad
+        dias_espera = max((hoy - fecha_base).days, 0) if fecha_base else 0
+        if dias_espera > max_espera:
+            max_espera = dias_espera
+        evidencias_list = list(act.evidencias.all())
+        if evidencias_list:
+            con_evidencia += 1
+
+        nombre = act.funcionario_autor.nombre_completo
+        conteo_por_func[nombre] = conteo_por_func.get(nombre, 0) + 1
+        pendientes_lista.append({
+            'actividad': act,
+            'dias_espera': dias_espera,
+            'evidencias': evidencias_list,
+        })
+
+    ordenado = sorted(conteo_por_func.items(), key=lambda x: x[1], reverse=True)
+    chart_pendientes = {
+        'labels': [x[0] for x in ordenado],
+        'values': [x[1] for x in ordenado],
+    }
+
+    context = {
+        **base,
+        'seccion_activa': 'pendientes',
+        'pendientes_lista': pendientes_lista,
+        'total_pendientes': len(pendientes_lista),
+        'con_evidencia': con_evidencia,
+        'max_espera': max_espera,
+        'chart_pendientes': chart_pendientes,
+    }
+    return render(request, 'dashboards/pendientes.html', context)
+
+
+@login_required(login_url='login')
+def dashboard_vencidos_view(request):
+    base = _obtener_base_dashboard(request)
+    tubo_qs = base['actividades_qs'].filter(ingresa_al_tubo=True)
+    if base['es_vista_personal'] and base['func_actual']:
+        tubo_qs = tubo_qs.filter(responsable_tubo=base['func_actual'])
+
+    vencidos_qs = tubo_qs.filter(estado_tubo='VENCIDO').order_by('fecha_compromiso', 'id')
+    activos_tubo_count = tubo_qs.filter(estado_tubo__in=['PENDIENTE', 'EN_PROCESO']).count()
+    hoy = timezone.localdate()
+
+    vencidos_lista = []
+    conteo_por_resp = {}
+    max_atraso = 0
+
+    for act in vencidos_qs:
+        dias_atraso = max((hoy - act.fecha_compromiso).days, 0) if act.fecha_compromiso else 0
+        if dias_atraso > max_atraso:
+            max_atraso = dias_atraso
+        resp_nombre = act.responsable_tubo.nombre_completo
+        conteo_por_resp[resp_nombre] = conteo_por_resp.get(resp_nombre, 0) + 1
+        vencidos_lista.append({
+            'actividad': act,
+            'dias_atraso': dias_atraso,
+        })
+
+    ordenado = sorted(conteo_por_resp.items(), key=lambda x: x[1], reverse=True)
+    chart_vencidos = {
+        'labels': [x[0] for x in ordenado],
+        'values': [x[1] for x in ordenado],
+    }
+
+    context = {
+        **base,
+        'seccion_activa': 'vencidos',
+        'vencidos_lista': vencidos_lista,
+        'total_vencidos': len(vencidos_lista),
+        'max_atraso': max_atraso,
+        'activos_tubo_count': activos_tubo_count,
+        'chart_vencidos': chart_vencidos,
+    }
+    return render(request, 'dashboards/vencidos.html', context)
 
 
 # ==============================================================================
@@ -896,12 +1237,97 @@ def actividades_list_view(request):
     if estado_filtro:
         actividades = actividades.filter(estado_verificacion=estado_filtro)
 
+    vecinos_qs = Vecino.objects.filter(activo=True).select_related('territorio').order_by('rut')
+    vecinos_datos = [
+        {
+            'id': v.id,
+            'rut': v.rut,
+            'nombre': v.nombre_completo,
+            'telefono': v.telefono or '',
+            'territorio_id': v.territorio_id or '',
+        }
+        for v in vecinos_qs
+    ]
+
     return render(request, 'actividades_list.html', {
         'form': form,
         'form_evidencia': SubirEvidenciaForm(),
         'actividades': actividades,
         'estados_verificacion': Actividad.ESTADOS_VERIFICACION,
         'estado_filtro': estado_filtro,
+        'vecinos_datos': vecinos_datos,
+        'territorios_modal': Territorio.objects.filter(activo=True).order_by('nombre'),
+    })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
+def vecino_registro_rapido_view(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Método no permitido.'})
+
+    nombre_completo = request.POST.get('nombre_completo', '').strip()
+    rut = request.POST.get('rut', '').strip()
+    telefono = request.POST.get('telefono', '').strip()
+    territorio_id = request.POST.get('territorio_id', '').strip()
+
+    if not nombre_completo:
+        return JsonResponse({'ok': False, 'error': 'Debe ingresar el nombre completo del vecino.'})
+    if not rut:
+        return JsonResponse({'ok': False, 'error': 'Debe ingresar el RUT del vecino.'})
+    if not telefono:
+        return JsonResponse({'ok': False, 'error': 'Debe ingresar el número de teléfono del vecino.'})
+
+    rut_norm = ''.join(c for c in rut.upper() if c.isalnum())
+    if len(rut_norm) < 7:
+        return JsonResponse({'ok': False, 'error': 'El RUT ingresado no parece válido.'})
+
+    for rut_existente in Vecino.objects.values_list('rut', flat=True):
+        if ''.join(c for c in (rut_existente or '').upper() if c.isalnum()) == rut_norm:
+            return JsonResponse({'ok': False, 'error': f'Ya existe un vecino registrado con el RUT {rut_existente}.'})
+
+    territorio = Territorio.objects.filter(id=territorio_id).first() if territorio_id else None
+    if not territorio:
+        func_actual = getattr(request.user, 'funcionario', None)
+        if func_actual and func_actual.delegacion:
+            territorio = Territorio.objects.filter(delegacion=func_actual.delegacion, activo=True).first()
+        if not territorio:
+            territorio = Territorio.objects.filter(activo=True).first()
+
+    if not territorio:
+        return JsonResponse({'ok': False, 'error': 'Debe seleccionar un territorio válido.'})
+
+    partes = nombre_completo.split(None, 1)
+    nombres = partes[0]
+    apellidos = partes[1] if len(partes) > 1 else ''
+
+    vecino = Vecino.objects.create(
+        rut=rut,
+        nombres=nombres,
+        apellidos=apellidos,
+        telefono=telefono,
+        correo='',
+        direccion='',
+        territorio=territorio,
+        activo=True,
+    )
+
+    func_actual = getattr(request.user, 'funcionario', None)
+    BitacoraAuditoria.objects.create(
+        usuario=func_actual,
+        modulo='Vecinos',
+        accion='Registro Rápido de Vecino',
+        detalle=f"Se registró al vecino {vecino.nombre_completo} (RUT: {vecino.rut}) desde el formulario de actividades."
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'vecino': {
+            'id': vecino.id,
+            'rut': vecino.rut,
+            'nombre': vecino.nombre_completo,
+            'telefono': vecino.telefono or '',
+            'territorio_id': vecino.territorio_id or '',
+        }
     })
 
 

@@ -8,6 +8,10 @@ urlpatterns = [
     path('login/', views.login_institucional, name='login'),
     path('logout/', views.cerrar_sesion, name='logout'),
     path('', views.dashboard_inicio, name='dashboard_inicio'),
+    path('dashboard/cumplimiento/', views.dashboard_cumplimiento_view, name='dashboard_cumplimiento'),
+    path('dashboard/aprobadas/', views.dashboard_aprobadas_view, name='dashboard_aprobadas'),
+    path('dashboard/pendientes/', views.dashboard_pendientes_view, name='dashboard_pendientes'),
+    path('dashboard/vencidos/', views.dashboard_vencidos_view, name='dashboard_vencidos'),
     path('funcionarios/nuevo/', views.FuncionarioCreateView.as_view(), name='funcionarios_crear'),
 
     # Metas y Flujos del Tubo
@@ -20,6 +24,7 @@ urlpatterns = [
     # Mantenedores Operativos (CRUD)
     path('vecinos/', views.VecinoListView.as_view(), name='vecinos_list'),
     path('vecinos/nuevo/', views.VecinoCreateView.as_view(), name='vecinos_crear'),
+    path('vecinos/registro-rapido/', views.vecino_registro_rapido_view, name='vecino_registro_rapido'),
     path('vecinos/<int:pk>/editar/', views.VecinoUpdateView.as_view(), name='vecinos_editar'),
 
     path('juntas/', views.JuntaListView.as_view(), name='juntas_list'),

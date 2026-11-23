@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-hourglass-split me-2"></i>Dashboard de Pendientes de Verificación
+            </h4>
+            <small class="text-muted">Actividades en espera de dictamen, ordenadas por antigüedad para priorizar revisión</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'dashboard_inicio' %}{{ query_filtros }}" class="btn-muni-outline text-decoration-none">
+                <i class="bi bi-arrow-left me-1"></i>Volver al Dashboard Principal
+            </a>
+            {% if es_admin or es_verificador %}
+                <a href="{% url 'bandeja_verificacion' %}?estado=PENDIENTE" class="btn-muni text-decoration-none">
+                    <i class="bi bi-patch-check-fill me-1"></i>Abrir Bandeja de Verificación
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="{% url 'dashboard_cumplimiento' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pie-chart-fill me-1"></i>Cumplimiento</a>
+        <a href="{% url 'dashboard_aprobadas' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-check-fill me-1"></i>Aprobadas</a>
+        <a href="{% url 'dashboard_pendientes' %}{{ query_filtros }}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-granate);"><i class="bi bi-hourglass-split me-1"></i>Pendientes</a>
+        <a href="{% url 'dashboard_vencidos' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-exclamation-triangle-fill me-1"></i>Vencidos</a>
+    </div>
+
+    <form method="get" class="row g-3">
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for t in trimestres %}
+                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Delegación</label>
+            {% if puede_filtrar_delegacion %}
+                <select name="delegacion" class="form-select form-select-sm"
+                        onchange="const f = this.form.querySelector('select[name=\'funcionario\']'); if (f) f.value = ''; this.form.submit();">
+                    <option value="">Todas las delegaciones</option>
+                    {% for delg in delegaciones_lista %}
+                        <option value="{{ delg.id }}" {% if filtro_delegacion == delg.id|stringformat:"s" %}selected{% endif %}>{{ delg.nombre }}</option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <select class="form-select form-select-sm" disabled><option selected>{{ delegacion_actual.nombre|default:"La Serena" }}</option></select>
+            {% endif %}
+        </div>
+        {% if not es_vista_personal %}
+        <div class="col-md-4">
+            <label class="form-label small fw-bold text-muted mb-1">Funcionario</label>
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios_lista %}
+                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Total Pendientes</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-warning">{{ total_pendientes }}</h2>
+            <small class="text-muted">Esperando dictamen del verificador</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Listas con Evidencia</span>
+            <h2 class="fw-extrabold mb-0 mt-1">{{ con_evidencia }}</h2>
+            <small class="text-muted">Tienen al menos un archivo adjunto</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Mayor Espera Actual</span>
+            <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ max_espera }} días</h2>
+            <small class="text-muted">Desde la fecha de ingreso</small>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card mb-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-2" style="color: var(--muni-crimson);"></i>Pendientes de Revisión por Funcionario</h6>
+    <div style="position: relative; height: 220px;">
+        <canvas id="chartPendientesDetalle"></canvas>
+    </div>
+</div>
+
+<div class="muni-card">
+    <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-warning"></i>Cola de Actividades Pendientes</h6>
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / Fecha</th>
+                    <th>Funcionario / Delegación</th>
+                    <th>Meta y Actividad</th>
+                    <th>Evidencias</th>
+                    <th>Tiempo en Espera</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in pendientes_lista %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ item.actividad.codigo }}</div>
+                        <small class="text-muted">{{ item.actividad.fecha_actividad|date:"d/m/Y" }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ item.actividad.funcionario_autor.nombre_completo }}</div>
+                        <small class="text-muted">{{ item.actividad.funcionario_autor.delegacion.nombre }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ item.actividad.tipo_actividad }}</div>
+                        <small class="d-block text-muted">{{ item.actividad.meta_asignada.meta.nombre }}</small>
+                        <small class="text-secondary">{{ item.actividad.solicitante_nombre }}</small>
+                    </td>
+                    <td>
+                        {% for ev in item.evidencias %}
+                            <div class="mb-1">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="badge bg-light text-dark border text-decoration-none">
+                                    <i class="bi bi-paperclip text-danger me-1"></i>{{ ev.codigo }}
+                                </a>
+                            </div>
+                        {% empty %}
+                            <span class="badge bg-warning text-dark">Sin evidencia</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <span class="badge {% if item.dias_espera >= 5 %}bg-danger{% elif item.dias_espera >= 2 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                            {{ item.dias_espera }} día{{ item.dias_espera|pluralize }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if es_admin or es_verificador %}
+                            <a href="{% url 'bandeja_verificacion' %}?estado=PENDIENTE&funcionario={{ item.actividad.funcionario_autor.id }}" class="btn btn-sm text-white" style="background: var(--muni-crimson);">Revisar</a>
+                        {% else %}
+                            <a href="{% url 'actividades_list' %}?estado=PENDIENTE" class="btn btn-sm btn-outline-secondary">Ver</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-success fw-semibold py-4"><i class="bi bi-check-circle-fill me-1"></i>¡Al día! No hay actividades pendientes de verificación.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{ chart_pendientes|json_script:"chart-pendientes-json" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const pData = JSON.parse(document.getElementById('chart-pendientes-json').textContent);
+    new Chart(document.getElementById('chartPendientesDetalle'), {
+        type: 'bar',
+        data: {
+            labels: pData.labels.length ? pData.labels : ['Sin pendientes'],
+            datasets: [{ label: 'Pendientes', data: pData.values.length ? pData.values : [0], backgroundColor: '#f59e0b', borderRadius: 6 }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+</script>
+{% endblock %}

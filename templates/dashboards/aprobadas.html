@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-file-earmark-check-fill me-2"></i>Dashboard de Actividades Aprobadas
+            </h4>
+            <small class="text-muted">Listado completo de actividades en estado Aprobada y Pondera junto a sus evidencias</small>
+        </div>
+        <a href="{% url 'dashboard_inicio' %}{{ query_filtros }}" class="btn-muni-outline text-decoration-none">
+            <i class="bi bi-arrow-left me-1"></i>Volver al Dashboard Principal
+        </a>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="{% url 'dashboard_cumplimiento' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pie-chart-fill me-1"></i>Cumplimiento</a>
+        <a href="{% url 'dashboard_aprobadas' %}{{ query_filtros }}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-granate);"><i class="bi bi-file-earmark-check-fill me-1"></i>Aprobadas</a>
+        <a href="{% url 'dashboard_pendientes' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-hourglass-split me-1"></i>Pendientes</a>
+        <a href="{% url 'dashboard_vencidos' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-exclamation-triangle-fill me-1"></i>Vencidos</a>
+    </div>
+
+    <form method="get" class="row g-3">
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for t in trimestres %}
+                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Delegación</label>
+            {% if puede_filtrar_delegacion %}
+                <select name="delegacion" class="form-select form-select-sm"
+                        onchange="const f = this.form.querySelector('select[name=\'funcionario\']'); if (f) f.value = ''; this.form.submit();">
+                    <option value="">Todas las delegaciones</option>
+                    {% for delg in delegaciones_lista %}
+                        <option value="{{ delg.id }}" {% if filtro_delegacion == delg.id|stringformat:"s" %}selected{% endif %}>{{ delg.nombre }}</option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <select class="form-select form-select-sm" disabled><option selected>{{ delegacion_actual.nombre|default:"La Serena" }}</option></select>
+            {% endif %}
+        </div>
+        {% if not es_vista_personal %}
+        <div class="col-md-4">
+            <label class="form-label small fw-bold text-muted mb-1">Funcionario</label>
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios_lista %}
+                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Aprobadas y Ponderan</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-success">{{ total_aprobadas }}</h2>
+            <small class="text-muted">Aportan directamente a metas</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Con Evidencia Adjunta</span>
+            <h2 class="fw-extrabold mb-0 mt-1">{{ con_evidencia_count }}</h2>
+            <small class="text-muted">Respaldadas con foto o documento</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Aprobadas (No Ponderan)</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-info">{{ no_ponderan_count }}</h2>
+            <small class="text-muted">Validadas sin peso en meta</small>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card mb-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-2" style="color: var(--muni-crimson);"></i>Actividades Aprobadas por Funcionario</h6>
+    <div style="position: relative; height: 240px;">
+        <canvas id="chartAprobadasDetalle"></canvas>
+    </div>
+</div>
+
+<div class="muni-card">
+    <h6 class="fw-bold mb-3"><i class="bi bi-check2-all me-2 text-success"></i>Listado de Actividades Aprobadas y Ponderadas</h6>
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / Fecha</th>
+                    <th>Funcionario / Delegación</th>
+                    <th>Meta</th>
+                    <th>Actividad y Solicitante</th>
+                    <th>Evidencias</th>
+                    <th>Verificado Por</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for act in actividades_aprobadas %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ act.codigo }}</div>
+                        <small class="text-muted">{{ act.fecha_actividad|date:"d/m/Y" }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.funcionario_autor.nombre_completo }}</div>
+                        <small class="text-muted">{{ act.funcionario_autor.delegacion.nombre }}</small>
+                    </td>
+                    <td><small class="fw-semibold">{{ act.meta_asignada.meta.nombre }}</small></td>
+                    <td>
+                        <div class="fw-semibold">{{ act.tipo_actividad }}</div>
+                        <small class="d-block text-muted">{{ act.descripcion|truncatechars:90 }}</small>
+                        <small class="text-secondary"><i class="bi bi-person me-1"></i>{{ act.solicitante_nombre }} ({{ act.territorio.nombre }})</small>
+                    </td>
+                    <td>
+                        {% for ev in act.evidencias.all %}
+                            <div class="mb-1">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="badge bg-light text-dark border text-decoration-none">
+                                    <i class="bi bi-file-earmark-arrow-down-fill text-danger me-1"></i>{{ ev.codigo }}
+                                </a>
+                            </div>
+                        {% empty %}
+                            <span class="text-muted small">Sin adjunto</span>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <div class="small fw-semibold">{{ act.verificado_por.nombre_completo|default:"Sistema" }}</div>
+                        <small class="text-muted">{{ act.fecha_verificacion|date:"d/m/Y H:i"|default:"-" }}</small>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">No hay actividades aprobadas para los filtros seleccionados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{{ chart_aprobadas|json_script:"chart-aprobadas-json" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const aData = JSON.parse(document.getElementById('chart-aprobadas-json').textContent);
+    new Chart(document.getElementById('chartAprobadasDetalle'), {
+        type: 'bar',
+        data: {
+            labels: aData.labels.length ? aData.labels : ['Sin aprobadas'],
+            datasets: [{ label: 'Aprobadas', data: aData.values.length ? aData.values : [0], backgroundColor: '#15803d', borderRadius: 6 }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+</script>
+{% endblock %}

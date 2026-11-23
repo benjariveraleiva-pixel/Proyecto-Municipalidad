@@ -77,11 +77,18 @@ class VecinoForm(forms.ModelForm):
             'nombres': forms.TextInput(attrs={'class': 'form-control'}),
             'apellidos': forms.TextInput(attrs={'class': 'form-control'}),
             'telefono': forms.TextInput(attrs={'class': 'form-control', 'placeholder': '+569...'}),
-            'correo': forms.EmailInput(attrs={'class': 'form-control'}),
-            'direccion': forms.TextInput(attrs={'class': 'form-control'}),
+            'correo': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'Opcional (correo@ejemplo.cl)'}),
+            'direccion': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Opcional'}),
             'territorio': forms.Select(attrs={'class': 'form-select'}),
             'activo': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['correo'].required = False
+        self.fields['correo'].label = "Correo (Opcional)"
+        self.fields['direccion'].required = False
+        self.fields['direccion'].label = "Dirección (Opcional)"
 
 
 class JuntaVecinosForm(forms.ModelForm):
@@ -179,7 +186,7 @@ class ActividadRegistroForm(forms.ModelForm):
             'hito': forms.Select(attrs={'class': 'form-select form-select-sm'}),
             'tipo_actividad': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Ej: Operativo terreno / Atención presencial'}),
             'origen': forms.Select(attrs={'class': 'form-select form-select-sm'}),
-            'vecino_solicitante': forms.Select(attrs={'class': 'form-select form-select-sm'}),
+            'vecino_solicitante': forms.Select(attrs={'class': 'form-select form-select-sm d-none'}),
             'solicitante_nombre': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': 'Nombre vecino u organización'}),
             'solicitante_rut': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': '12.345.678-9'}),
             'solicitante_telefono': forms.TextInput(attrs={'class': 'form-control form-control-sm', 'placeholder': '+569...'}),
@@ -197,6 +204,8 @@ class ActividadRegistroForm(forms.ModelForm):
         self.fields['hito'].empty_label = "--- Sin hito asociado (Opcional) ---"
         self.fields['vecino_solicitante'].required = False
         self.fields['vecino_solicitante'].empty_label = "--- Sin vecino registrado (Opcional) ---"
+        self.fields['vecino_solicitante'].queryset = Vecino.objects.filter(activo=True).order_by('rut')
+        self.fields['vecino_solicitante'].label_from_instance = lambda obj: f"{obj.rut} · {obj.nombre_completo}"
         self.fields['responsable_tubo'].required = False
 
     def clean_archivo_evidencia(self):

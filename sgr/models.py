@@ -176,8 +176,8 @@ class Vecino(models.Model):
     nombres = models.CharField(max_length=120)
     apellidos = models.CharField(max_length=120)
     telefono = models.CharField(max_length=30)
-    correo = models.EmailField(blank=True)
-    direccion = models.CharField(max_length=250)
+    correo = models.EmailField(blank=True, null=True)
+    direccion = models.CharField(max_length=200, blank=True, null=True)
     territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, related_name='vecinos')
     activo = models.BooleanField(default=True)
 

@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>Dashboard de Compromisos Vencidos
+            </h4>
+            <small class="text-muted">Seguimiento prioritario de compromisos del Tubo con fecha vencida y días de atraso</small>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'dashboard_inicio' %}{{ query_filtros }}" class="btn-muni-outline text-decoration-none">
+                <i class="bi bi-arrow-left me-1"></i>Volver al Dashboard Principal
+            </a>
+            <a href="{% url 'tubo_compromisos' %}?estado=VENCIDO" class="btn-muni text-decoration-none">
+                <i class="bi bi-funnel-fill me-1"></i>Ir al Tubo de Compromisos
+            </a>
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="{% url 'dashboard_cumplimiento' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pie-chart-fill me-1"></i>Cumplimiento</a>
+        <a href="{% url 'dashboard_aprobadas' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-check-fill me-1"></i>Aprobadas</a>
+        <a href="{% url 'dashboard_pendientes' %}{{ query_filtros }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-hourglass-split me-1"></i>Pendientes</a>
+        <a href="{% url 'dashboard_vencidos' %}{{ query_filtros }}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-granate);"><i class="bi bi-exclamation-triangle-fill me-1"></i>Vencidos</a>
+    </div>
+
+    <form method="get" class="row g-3">
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
+            <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
+                {% for t in trimestres %}
+                    <option value="{{ t.id }}" {% if trimestre_activo.id == t.id %}selected{% endif %}>{{ t.nombre }} ({{ t.anio }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+            <label class="form-label small fw-bold text-muted mb-1">Delegación</label>
+            {% if puede_filtrar_delegacion %}
+                <select name="delegacion" class="form-select form-select-sm"
+                        onchange="const f = this.form.querySelector('select[name=\'funcionario\']'); if (f) f.value = ''; this.form.submit();">
+                    <option value="">Todas las delegaciones</option>
+                    {% for delg in delegaciones_lista %}
+                        <option value="{{ delg.id }}" {% if filtro_delegacion == delg.id|stringformat:"s" %}selected{% endif %}>{{ delg.nombre }}</option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <select class="form-select form-select-sm" disabled><option selected>{{ delegacion_actual.nombre|default:"La Serena" }}</option></select>
+            {% endif %}
+        </div>
+        {% if not es_vista_personal %}
+        <div class="col-md-4">
+            <label class="form-label small fw-bold text-muted mb-1">Funcionario</label>
+            <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los funcionarios</option>
+                {% for f in funcionarios_lista %}
+                    <option value="{{ f.id }}" {% if filtro_funcionario == f.id|stringformat:"s" %}selected{% endif %}>{{ f.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Compromisos Vencidos</span>
+            <h2 class="fw-extrabold mb-0 mt-1 {% if total_vencidos > 0 %}text-danger{% else %}text-success{% endif %}">{{ total_vencidos }}</h2>
+            <small class="text-muted">Requieren gestión o actualización</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Atraso Máximo</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-danger">{{ max_atraso }} días</h2>
+            <small class="text-muted">Desde la fecha de compromiso vencida</small>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="muni-card muni-card-accent">
+            <span class="text-muted small fw-semibold">Compromisos Activos en Plazo</span>
+            <h2 class="fw-extrabold mb-0 mt-1 text-primary">{{ activos_tubo_count }}</h2>
+            <small class="text-muted">Pendientes o En Proceso vigentes</small>
+        </div>
+    </div>
+</div>
+
+{% if total_vencidos > 0 %}
+<div class="muni-card mb-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill me-2 text-danger"></i>Compromisos Vencidos por Responsable</h6>
+    <div style="position: relative; height: 220px;">
+        <canvas id="chartVencidosDetalle"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<div class="muni-card">
+    <h6 class="fw-bold mb-3"><i class="bi bi-exclamation-octagon-fill me-2 text-danger"></i>Detalle de Compromisos Vencidos</h6>
+    {% if vencidos_lista %}
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Solicitante / Territorio</th>
+                    <th>Responsable / Área de Apoyo</th>
+                    <th>Fecha Compromiso</th>
+                    <th>Días de Atraso</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in vencidos_lista %}
+                <tr>
+                    <td class="fw-bold">{{ item.actividad.codigo }}</td>
+                    <td>
+                        <div class="fw-semibold">{{ item.actividad.solicitante_nombre }}</div>
+                        <small class="text-muted">{{ item.actividad.territorio.nombre }} · {{ item.actividad.territorio.delegacion.nombre }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ item.actividad.responsable_tubo.nombre_completo }}</div>
+                        <small class="text-muted">{{ item.actividad.area_apoyo|default:"Sin área de apoyo" }}</small>
+                    </td>
+                    <td>{{ item.actividad.fecha_compromiso|date:"d/m/Y"|default:"-" }}</td>
+                    <td>
+                        <span class="badge-estado estado-vencido">{{ item.dias_atraso }} día{{ item.dias_atraso|pluralize }}</span>
+                    </td>
+                    <td>
+                        <a href="{% url 'tubo_compromisos' %}?q={{ item.actividad.codigo }}" class="btn btn-sm text-white" style="background: var(--muni-crimson);">Gestionar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-success d-flex align-items-center gap-3 mb-0 border-0">
+        <i class="bi bi-check-circle-fill fs-3"></i>
+        <div>
+            <div class="fw-bold">Sin compromisos vencidos</div>
+            <div class="small">Todos los compromisos del Tubo para estos filtros se encuentran al día o cerrados.</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{{ chart_vencidos|json_script:"chart-vencidos-json" }}
+{% endblock %}
+
+{% block extra_js %}
+{% if total_vencidos > 0 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const vData = JSON.parse(document.getElementById('chart-vencidos-json').textContent);
+    new Chart(document.getElementById('chartVencidosDetalle'), {
+        type: 'bar',
+        data: {
+            labels: vData.labels,
+            datasets: [{ label: 'Vencidos', data: vData.values, backgroundColor: '#dc2626', borderRadius: 6 }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

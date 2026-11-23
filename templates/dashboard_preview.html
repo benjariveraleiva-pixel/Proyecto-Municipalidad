@@ -26,10 +26,11 @@
         </div>
     </div>
 
-    <!-- Contenedor de Filtros y Buscador -->
+    <!-- Barra de Filtros: 1. Trimestre | 2. Delegación | 3. Funcionario | 4. Búsqueda en el Tubo -->
     <div class="row g-3">
         <div class="col-md-9">
             <form method="get" class="row g-3 m-0">
+                <!-- 1. Trimestre -->
                 <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
                     <label class="form-label small fw-bold text-muted mb-1">Trimestre</label>
                     <select name="trimestre" class="form-select form-select-sm" onchange="this.form.submit()">
@@ -39,9 +40,30 @@
                     </select>
                 </div>
 
+                <!-- 2. Delegación -->
+                <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
+                    <label class="form-label small fw-bold text-muted mb-1">Delegación</label>
+                    {% if puede_filtrar_delegacion %}
+                        <select name="delegacion" class="form-select form-select-sm"
+                                onchange="const f = this.form.querySelector('select[name=\'funcionario\']'); if (f) f.value = ''; this.form.submit();">
+                            <option value="">Todas las delegaciones</option>
+                            {% for delg in delegaciones_lista %}
+                                <option value="{{ delg.id }}" {% if filtro_delegacion == delg.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ delg.nombre }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    {% else %}
+                        <select class="form-select form-select-sm" disabled>
+                            <option selected>{{ delegacion_actual.nombre|default:"La Serena" }}</option>
+                        </select>
+                    {% endif %}
+                </div>
+
+                <!-- 3. Funcionario -->
                 {% if not es_vista_personal %}
                 <div class="col-md-4">
-                    <label class="form-label small fw-bold text-muted mb-1">Funcionario Responsable</label>
+                    <label class="form-label small fw-bold text-muted mb-1">Funcionario</label>
                     <select name="funcionario" class="form-select form-select-sm" onchange="this.form.submit()">
                         <option value="">Todos los funcionarios</option>
                         {% for f in funcionarios_lista %}
@@ -52,22 +74,13 @@
                     </select>
                 </div>
                 {% endif %}
-
-                <div class="{% if es_vista_personal %}col-md-6{% else %}col-md-4{% endif %}">
-                    <label class="form-label small fw-bold text-muted mb-1">Territorio</label>
-                    <select name="territorio" class="form-select form-select-sm" onchange="this.form.submit()">
-                        <option value="">Todos los territorios</option>
-                        {% for ter in territorios_lista %}
-                            <option value="{{ ter.id }}" {% if filtro_territorio == ter.id|stringformat:"s" %}selected{% endif %}>{{ ter.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
             </form>
         </div>
 
+        <!-- 4. Búsqueda en el Tubo -->
         <div class="col-md-3">
             <form action="{% url 'tubo_compromisos' %}" method="get" class="m-0">
-                <label class="form-label small fw-bold text-muted mb-1">Búsqueda rápida en el Tubo</label>
+                <label class="form-label small fw-bold text-muted mb-1">Búsqueda en el Tubo</label>
                 <div class="input-group">
                     <input type="text" name="q" class="form-control form-control-sm" placeholder="Código, RUT, nombre...">
                     <button type="submit" class="btn btn-outline-secondary btn-sm">Ir</button>
@@ -77,50 +90,84 @@
     </div>
 </div>
 
-<!-- Tarjetas KPI Conectadas a Base de Datos -->
+<!-- Tarjetas KPI Interactivas (Clickeables hacia su Dashboard Exclusivo) -->
+<style>
+    .kpi-link-card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .kpi-link-card:hover {
+        transform: translateY(-4px);
+        color: inherit;
+    }
+    .kpi-link-card:hover .muni-card {
+        box-shadow: 0 12px 28px rgba(122, 17, 30, 0.16);
+    }
+    .kpi-ver-detalle {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--muni-crimson);
+        opacity: 0.82;
+    }
+</style>
+
 <div class="row g-4 mb-4">
     <div class="col-md-3 animate-fade-up delay-1">
-        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
-            <div>
-                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mi Cumplimiento{% else %}Cumplimiento General{% endif %}</span>
-                <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ cumplimiento_general }}%</h2>
-                <small class="text-success fw-semibold"><i class="bi bi-arrow-up-right"></i> Esperado al día: {{ meta_esperada_hoy }}%</small>
+        <a href="{% url 'dashboard_cumplimiento' %}{{ query_filtros }}" class="kpi-link-card">
+            <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between h-100">
+                <div>
+                    <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mi Cumplimiento{% else %}Cumplimiento General{% endif %}</span>
+                    <h2 class="fw-extrabold mb-0 mt-1" style="color: var(--muni-crimson);">{{ cumplimiento_general }}%</h2>
+                    <small class="text-success fw-semibold d-block"><i class="bi bi-arrow-up-right"></i> Esperado al día: {{ meta_esperada_hoy }}%</small>
+                    <span class="kpi-ver-detalle">Ver dashboard <i class="bi bi-arrow-right-short"></i></span>
+                </div>
+                <div class="kpi-icon-circle"><i class="bi bi-pie-chart-fill"></i></div>
             </div>
-            <div class="kpi-icon-circle"><i class="bi bi-pie-chart-fill"></i></div>
-        </div>
+        </a>
     </div>
 
     <div class="col-md-3 animate-fade-up delay-2">
-        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
-            <div>
-                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Aprobadas{% else %}Actividades Aprobadas{% endif %}</span>
-                <h2 class="fw-extrabold mb-0 mt-1">{{ total_aprobadas }}</h2>
-                <small class="text-muted">Aprobadas y ponderan</small>
+        <a href="{% url 'dashboard_aprobadas' %}{{ query_filtros }}" class="kpi-link-card">
+            <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between h-100">
+                <div>
+                    <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Aprobadas{% else %}Actividades Aprobadas{% endif %}</span>
+                    <h2 class="fw-extrabold mb-0 mt-1">{{ total_aprobadas }}</h2>
+                    <small class="text-muted d-block">Aprobadas y ponderan</small>
+                    <span class="kpi-ver-detalle">Ver dashboard <i class="bi bi-arrow-right-short"></i></span>
+                </div>
+                <div class="kpi-icon-circle"><i class="bi bi-file-earmark-check-fill"></i></div>
             </div>
-            <div class="kpi-icon-circle"><i class="bi bi-file-earmark-check-fill"></i></div>
-        </div>
+        </a>
     </div>
 
     <div class="col-md-3 animate-fade-up delay-3">
-        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
-            <div>
-                <span class="text-muted small fw-semibold">Pendientes Verificación</span>
-                <h2 class="fw-extrabold mb-0 mt-1 text-warning">{{ total_pendientes_verif }}</h2>
-                <small class="text-muted">En bandeja de revisión</small>
+        <a href="{% url 'dashboard_pendientes' %}{{ query_filtros }}" class="kpi-link-card">
+            <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between h-100">
+                <div>
+                    <span class="text-muted small fw-semibold">Pendientes Verificación</span>
+                    <h2 class="fw-extrabold mb-0 mt-1 text-warning">{{ total_pendientes_verif }}</h2>
+                    <small class="text-muted d-block">En bandeja de revisión</small>
+                    <span class="kpi-ver-detalle">Ver dashboard <i class="bi bi-arrow-right-short"></i></span>
+                </div>
+                <div class="kpi-icon-circle"><i class="bi bi-hourglass-split"></i></div>
             </div>
-            <div class="kpi-icon-circle"><i class="bi bi-hourglass-split"></i></div>
-        </div>
+        </a>
     </div>
 
     <div class="col-md-3 animate-fade-up delay-4">
-        <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between">
-            <div>
-                <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Vencidos{% else %}Compromisos Vencidos{% endif %}</span>
-                <h2 class="fw-extrabold mb-0 mt-1 text-danger">{{ total_vencidos }}</h2>
-                <small class="text-danger fw-semibold">En el Tubo de gestión</small>
+        <a href="{% url 'dashboard_vencidos' %}{{ query_filtros }}" class="kpi-link-card">
+            <div class="muni-card muni-card-accent d-flex align-items-center justify-content-between h-100">
+                <div>
+                    <span class="text-muted small fw-semibold">{% if es_vista_personal %}Mis Vencidos{% else %}Compromisos Vencidos{% endif %}</span>
+                    <h2 class="fw-extrabold mb-0 mt-1 text-danger">{{ total_vencidos }}</h2>
+                    <small class="text-danger fw-semibold d-block">En el Tubo de gestión</small>
+                    <span class="kpi-ver-detalle">Ver dashboard <i class="bi bi-arrow-right-short"></i></span>
+                </div>
+                <div class="kpi-icon-circle"><i class="bi bi-exclamation-triangle-fill"></i></div>
             </div>
-            <div class="kpi-icon-circle"><i class="bi bi-exclamation-triangle-fill"></i></div>
-        </div>
+        </a>
     </div>
 </div>
 
@@ -230,14 +277,14 @@
         </div>
     </div>
 
-    <!-- Semáforo Calculado en Vivo por Funcionario -->
+    <!-- Semáforo Calculado en Vivo por Funcionario (Base 100%) -->
     <div class="col-lg-5 animate-fade-up delay-3">
         <div class="muni-card h-100">
             <h6 class="fw-bold mb-3">
                 <i class="bi bi-traffic-light me-2" style="color: var(--muni-crimson);"></i>
                 {% if es_vista_personal %}Mi Semáforo de Cumplimiento{% else %}Semáforo de Avance por Funcionario{% endif %}
             </h6>
-            <p class="small text-muted mb-3">Calculado en tiempo real según metas asignadas y actividades en estado <strong>Aprobada y pondera</strong>.</p>
+            <p class="small text-muted mb-3">Calculado en base al <strong>100%</strong> de las metas asignadas a cada usuario (solo actividades en estado <strong>Aprobada y pondera</strong>).</p>
 
             {% for item in semaforo_funcionarios %}
                 <div class="d-flex align-items-center justify-content-between p-3 mb-2 rounded-3 border bg-light bg-opacity-50">
@@ -245,7 +292,7 @@
                         <i class="bi bi-person-badge-fill fs-3" style="color: var(--muni-granate);"></i>
                         <div>
                             <div class="fw-bold">{{ item.funcionario.nombre_completo }}</div>
-                            <small class="text-muted">{{ item.funcionario.cargo.nombre }} · {{ item.total_ingresos }} actividades</small>
+                            <small class="text-muted">{{ item.funcionario.cargo.nombre }} · {{ item.funcionario.delegacion.nombre }} · {{ item.total_ingresos }} actividades · Pond. asignada: {{ item.ponderacion_asignada }}%</small>
                         </div>
                     </div>
                     <div class="d-flex align-items-center gap-3">
@@ -254,7 +301,7 @@
                     </div>
                 </div>
             {% empty %}
-                <p class="text-muted small text-center py-4">No hay funcionarios con metas asignadas en este trimestre.</p>
+                <p class="text-muted small text-center py-4">No hay funcionarios con metas asignadas para estos filtros.</p>
             {% endfor %}
         </div>
     </div>
