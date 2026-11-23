@@ -54,7 +54,13 @@ urlpatterns = [
     path('administracion/<slug:slug>/nuevo/', views_admin.admin_sgr_crear, name='admin_sgr_crear'),
     path('administracion/<slug:slug>/<int:pk>/editar/', views_admin.admin_sgr_editar, name='admin_sgr_editar'),
     path('administracion/<slug:slug>/<int:pk>/eliminar/', views_admin.admin_sgr_eliminar, name='admin_sgr_eliminar'),
+
+    
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    handler400 = 'sgr.error_handlers.error_400_view'
+    handler403 = 'sgr.error_handlers.error_403_view'
+    handler404 = 'sgr.error_handlers.error_404_view'
+    handler500 = 'sgr.error_handlers.error_500_view'

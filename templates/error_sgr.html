@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error {{ codigo }} | SGR Municipalidad de La Serena</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+            color: #ffffff;
+            background: radial-gradient(circle at top, #9E1B2A 0%, #7A111E 55%, #590B14 100%);
+            text-align: center;
+        }
+
+        .error-container {
+            width: 100%;
+            max-width: 540px;
+            padding: 44px 36px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            box-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
+            backdrop-filter: blur(6px);
+        }
+
+        .logo-wrapper {
+            margin-bottom: 24px;
+            line-height: 0;
+        }
+
+        .logo-muni {
+            width: 215px;
+            max-width: 100%;
+            height: auto;
+            display: inline-block;
+            border-radius: 14px;
+            box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+            border: 2px solid rgba(255, 255, 255, 0.22);
+        }
+
+        .institucion {
+            font-size: 0.78rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.78);
+            margin-bottom: 14px;
+            font-weight: 600;
+        }
+
+        .error-code {
+            font-size: clamp(4.2rem, 12vw, 6.2rem);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: -2px;
+            margin-bottom: 14px;
+            text-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+
+        .error-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #ffffff;
+        }
+
+        .error-message {
+            font-size: 0.98rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.88);
+            max-width: 430px;
+            margin: 0 auto 28px auto;
+        }
+
+        .divider {
+            width: 56px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 3px;
+            margin: 0 auto 18px auto;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .btn-primary {
+            display: inline-block;
+            padding: 11px 26px;
+            border-radius: 10px;
+            background-color: #ffffff;
+            color: #7A111E;
+            font-weight: 700;
+            font-size: 0.92rem;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+        }
+
+        .btn-secondary {
+            display: inline-block;
+            padding: 11px 22px;
+            border-radius: 10px;
+            background-color: transparent;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 0.92rem;
+            text-decoration: none;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .footer-note {
+            margin-top: 26px;
+            font-size: 0.76rem;
+            color: rgba(255, 255, 255, 0.65);
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="logo-wrapper">
+            <img src="{{ logo_url }}" alt="Escudo Ilustre Municipalidad de La Serena" class="logo-muni" onerror="this.style.display='none'">
+        </div>
+
+        <div class="institucion">Ilustre Municipalidad de La Serena · SGR</div>
+
+        <div class="error-code">{{ codigo }}</div>
+        <div class="divider"></div>
+
+        <h1 class="error-title">{{ titulo }}</h1>
+        <p class="error-message">{{ mensaje }}</p>
+
+        <div class="actions">
+            <a href="/" class="btn-primary">Volver al Inicio</a>
+            <button type="button" class="btn-secondary" onclick="window.location.reload()">Reintentar</button>
+        </div>
+
+        <div class="footer-note">
+            Sistema de Gestión de Resultados · Coordinación de Delegaciones
+        </div>
+    </div>
+</body>
+</html>
