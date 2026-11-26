@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .mini-steps {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .mini-step-dot {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        font-size: 0.72rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #e9ecef;
+        color: #6c757d;
+        border: 1px solid #dee2e6;
+    }
+    .mini-step-dot.done {
+        background: #15803d;
+        color: #fff;
+        border-color: #15803d;
+    }
+    .mini-step-dot.current {
+        background: var(--muni-crimson);
+        color: #fff;
+        border-color: var(--muni-crimson);
+        box-shadow: 0 0 0 3px rgba(158, 27, 42, 0.2);
+    }
+</style>
+
+<!-- Tarjetas resumen por etapa -->
+<div class="row g-3 mb-4 animate-fade-up">
+    <div class="col-md">
+        <a href="?etapa=1" class="text-decoration-none">
+            <div class="muni-card muni-card-accent py-3">
+                <small class="text-muted fw-bold d-block">1. Entrada / Solicitud</small>
+                <h3 class="fw-extrabold mb-0 text-dark">{{ resumen_etapas.e1 }}</h3>
+            </div>
+        </a>
+    </div>
+    <div class="col-md">
+        <a href="?etapa=2" class="text-decoration-none">
+            <div class="muni-card muni-card-accent py-3">
+                <small class="text-muted fw-bold d-block">2. Evidencia Problema</small>
+                <h3 class="fw-extrabold mb-0 text-warning">{{ resumen_etapas.e2 }}</h3>
+            </div>
+        </a>
+    </div>
+    <div class="col-md">
+        <a href="?etapa=3" class="text-decoration-none">
+            <div class="muni-card muni-card-accent py-3">
+                <small class="text-muted fw-bold d-block">3. En Proceso</small>
+                <h3 class="fw-extrabold mb-0 text-primary">{{ resumen_etapas.e3 }}</h3>
+            </div>
+        </a>
+    </div>
+    <div class="col-md">
+        <a href="?etapa=4" class="text-decoration-none">
+            <div class="muni-card muni-card-accent py-3">
+                <small class="text-muted fw-bold d-block">4. Evidencia Terminada</small>
+                <h3 class="fw-extrabold mb-0" style="color: var(--muni-crimson);">{{ resumen_etapas.e4 }}</h3>
+            </div>
+        </a>
+    </div>
+    <div class="col-md">
+        <a href="?etapa=5" class="text-decoration-none">
+            <div class="muni-card muni-card-accent py-3">
+                <small class="text-muted fw-bold d-block">5. Finalizado / Cierre</small>
+                <h3 class="fw-extrabold mb-0 text-success">{{ resumen_etapas.e5 }}</h3>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-diagram-3-fill me-2"></i>Seguimiento de Solicitudes (5 Etapas)
+            </h4>
+            <small class="text-muted">Trazabilidad completa desde la solicitud inicial hasta la evidencia de término y cierre en meta</small>
+        </div>
+
+        <form method="get" class="d-flex flex-wrap gap-2">
+            <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" style="width: 230px;" placeholder="Buscar código, vecino o JJVV...">
+            <select name="etapa" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+                <option value="">Todas las etapas</option>
+                {% for num, label in etapas_choices %}
+                    <option value="{{ num }}" {% if etapa_filtro == num|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i></button>
+            {% if q or etapa_filtro %}
+                <a href="{% url 'seguimiento_list' %}" class="btn btn-sm btn-outline-danger">Limpiar</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código / Ingreso</th>
+                    <th>Solicitud y Solicitante</th>
+                    <th>Responsable / Meta</th>
+                    <th>Avance (Etapas 1 a 5)</th>
+                    <th>Derivación / Empresa</th>
+                    <th>Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for act in actividades %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ act.codigo }}</div>
+                        <small class="text-muted">{{ act.fecha_actividad|date:"d/m/Y" }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.tipo_actividad }}</div>
+                        <small class="d-block text-muted">{{ act.descripcion|truncatechars:75 }}</small>
+                        {% if act.tipo_solicitante == 'JUNTA' or act.junta_solicitante %}
+                            <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 mt-1">
+                                <i class="bi bi-houses-fill me-1"></i>{{ act.junta_solicitante.nombre|default:act.solicitante_nombre }}
+                            </span>
+                        {% else %}
+                            <small class="text-secondary"><i class="bi bi-person me-1"></i>{{ act.solicitante_nombre }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ act.funcionario_autor.nombre_completo }}</div>
+                        <small class="text-muted">{{ act.meta_asignada.meta.codigo }} · {{ act.meta_asignada.meta.nombre|truncatechars:35 }}</small>
+                    </td>
+                    <td>
+                        <div class="mini-steps mb-1">
+                            {% for paso in pasos_lista %}
+                                <span class="mini-step-dot {% if act.etapa_seguimiento > paso or act.etapa_seguimiento == 5 %}done{% elif act.etapa_seguimiento == paso %}current{% endif %}"
+                                      title="Etapa {{ paso }}">
+                                    {% if act.etapa_seguimiento > paso or act.etapa_seguimiento == 5 %}✓{% else %}{{ paso }}{% endif %}
+                                </span>
+                            {% endfor %}
+                        </div>
+                        <small class="text-muted fw-semibold">{{ act.get_etapa_seguimiento_display }}</small>
+                    </td>
+                    <td>
+                        <small class="fw-semibold">{{ act.entidad_reparacion|default:act.area_apoyo|default:"Sin derivar aún" }}</small>
+                    </td>
+                    <td>
+                        <a href="{% url 'seguimiento_detalle' act.id %}" class="btn btn-sm text-white fw-semibold" style="background: var(--muni-crimson);">
+                            <i class="bi bi-arrow-right-circle-fill me-1"></i>Gestionar
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No se encontraron solicitudes para seguimiento.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

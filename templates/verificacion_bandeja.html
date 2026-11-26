@@ -33,7 +33,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
         <div>
             <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-patch-check-fill me-2"></i>Bandeja del Verificador</h4>
-            <small class="text-muted">Auditoría de evidencias, ponderación de metas y cierre automático al aprobar</small>
+            <small class="text-muted">Auditoría de evidencias (antes y después), cierre de etapa 5 y ponderación de metas</small>
         </div>
 
         <form method="get" class="d-flex gap-2">
@@ -60,7 +60,7 @@
                     <th>Funcionario y Meta</th>
                     <th>Detalle de la Gestión</th>
                     <th>Evidencias para Auditar</th>
-                    <th>Estado Actual</th>
+                    <th>Estado / Etapa</th>
                     <th>Dictamen del Verificador</th>
                 </tr>
             </thead>
@@ -70,11 +70,16 @@
                     <td>
                         <div class="fw-bold">{{ act.codigo }}</div>
                         <small class="text-muted">{{ act.fecha_actividad|date:"d/m/Y" }}</small>
+                        <div class="mt-1">
+                            <a href="{% url 'seguimiento_detalle' act.id %}" class="btn btn-sm btn-outline-danger py-0 px-2" style="font-size: 0.72rem;">
+                                <i class="bi bi-diagram-3-fill me-1"></i>Ver Seguimiento
+                            </a>
+                        </div>
                     </td>
                     <td>
                         <div class="fw-bold">{{ act.funcionario_autor.nombre_completo }}</div>
                         <small class="d-block" style="color: var(--muni-crimson);">{{ act.meta_asignada.meta.nombre }}</small>
-                        <small class="text-muted d-block">Avance actual: {{ act.meta_asignada.actividades_aprobadas_count }}/{{ act.meta_asignada.cantidad_objetivo }}</small>
+                        <small class="text-muted d-block">Avance actual: {{ act.meta_asignada.actividades_aprobadas_count }}/{{ act.meta_asignada.cantidad_objetivo }} ({{ act.meta_asignada.porcentaje_cumplimiento_real }}%)</small>
                         {% if act.hito %}
                             <span class="badge bg-light text-dark border mt-1"><i class="bi bi-flag-fill text-danger me-1"></i>{{ act.hito.codigo }}</span>
                         {% endif %}
@@ -82,21 +87,37 @@
                     <td>
                         <div class="fw-semibold">{{ act.tipo_actividad }}</div>
                         <small class="d-block text-muted">{{ act.descripcion }}</small>
-                        <small class="text-secondary">Solicitante: {{ act.solicitante_nombre }}</small>
+                        {% if act.tipo_solicitante == 'JUNTA' or act.junta_solicitante %}
+                            <small class="text-danger fw-semibold"><i class="bi bi-houses-fill me-1"></i>JJVV: {{ act.junta_solicitante.nombre|default:act.solicitante_nombre }}</small>
+                        {% else %}
+                            <small class="text-secondary">Solicitante: {{ act.solicitante_nombre }}</small>
+                        {% endif %}
                     </td>
                     <td>
                         {% for ev in act.evidencias.all %}
-                            <div class="mb-1">
-                                <a href="{{ ev.archivo.url }}" target="_blank" class="btn btn-sm btn-outline-danger py-0 px-2">
-                                    <i class="bi bi-eye-fill me-1"></i>Ver {{ ev.codigo }}
-                                </a>
-                                <small class="d-block text-muted" style="font-size: 0.72rem;">{{ ev.observacion }}</small>
+                            <div class="mb-2">
+                                <span class="badge {% if ev.etapa == 'TERMINADO' %}bg-success{% elif ev.etapa == 'PROBLEMA' %}bg-warning text-dark{% else %}bg-secondary{% endif %} mb-1" style="font-size: 0.68rem;">
+                                    {{ ev.get_etapa_display }}
+                                </span>
+                                <div>
+                                    <a href="{{ ev.archivo.url }}" target="_blank" class="btn btn-sm btn-outline-danger py-0 px-2">
+                                        <i class="bi bi-eye-fill me-1"></i>Ver {{ ev.codigo }}
+                                    </a>
+                                </div>
+                                {% if ev.observacion %}
+                                    <small class="d-block text-muted" style="font-size: 0.72rem;">{{ ev.observacion }}</small>
+                                {% endif %}
                             </div>
                         {% empty %}
                             <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-circle me-1"></i>Sin archivos adjuntos</span>
                         {% endfor %}
                     </td>
                     <td>
+                        <div class="mb-1">
+                            <span class="badge {% if act.etapa_seguimiento == 5 %}bg-success{% elif act.etapa_seguimiento == 4 %}bg-primary{% else %}bg-secondary{% endif %}">
+                                Seguimiento: Etapa {{ act.etapa_seguimiento }}/5
+                            </span>
+                        </div>
                         {% if act.estado_verificacion == 'APROBADA_PONDERA' %}
                             <span class="badge bg-success">{{ act.get_estado_verificacion_display }}</span>
                         {% elif act.estado_verificacion == 'APROBADA_NO_PONDERA' %}
@@ -138,7 +159,7 @@
                             <form method="post" action="{% url 'dictaminar_actividad' act.id %}" class="d-flex flex-column gap-1">
                                 {% csrf_token %}
                                 <select name="decision" class="form-select form-select-sm fw-semibold">
-                                    <option value="APROBADA_PONDERA" {% if act.estado_verificacion == 'APROBADA_PONDERA' %}selected{% endif %}>✅ Aprobar, Pondera y Cerrar (Suma a meta)</option>
+                                    <option value="APROBADA_PONDERA" {% if act.estado_verificacion == 'APROBADA_PONDERA' %}selected{% endif %}>✅ Aprobar, Pondera y Cerrar Etapa 5</option>
                                     <option value="APROBADA_NO_PONDERA" {% if act.estado_verificacion == 'APROBADA_NO_PONDERA' %}selected{% endif %}>☑️ Aprobar y No Pondera</option>
                                     <option value="SOLICITUD_ANTECEDENTES" {% if act.estado_verificacion == 'SOLICITUD_ANTECEDENTES' %}selected{% endif %}>⚠️ Solicitar Antecedentes</option>
                                     <option value="RECHAZADA" {% if act.estado_verificacion == 'RECHAZADA' %}selected{% endif %}>❌ Rechazar Actividad</option>

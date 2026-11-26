@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="muni-card animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-person-badge-fill me-2"></i>Gestión de Funcionarios Municipales
+            </h4>
+            <small class="text-muted">Administración interna de cuentas, delegaciones, cargos y roles del SGR</small>
+        </div>
+        <div class="d-flex gap-2">
+            <form method="get" class="d-flex gap-2">
+                <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Buscar nombre, RUT o correo...">
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i></button>
+            </form>
+            <a href="{% url 'funcionarios_crear' %}" class="btn-muni text-decoration-none">
+                <i class="bi bi-person-plus-fill"></i> Nuevo Funcionario
+            </a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Funcionario / Usuario</th>
+                    <th>RUT / Contacto</th>
+                    <th>Cargo y Delegación</th>
+                    <th>Roles SGR</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in funcionarios %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ f.nombre_completo }}</div>
+                        <small class="text-muted">@{{ f.user.username }}</small>
+                    </td>
+                    <td>
+                        <div class="small fw-semibold">{{ f.rut }}</div>
+                        <small class="text-muted d-block">{{ f.correo }}</small>
+                        {% if f.telefono %}<small class="text-muted">{{ f.telefono }}</small>{% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-semibold small">{{ f.cargo.nombre }}</div>
+                        <small class="text-muted">{{ f.delegacion.nombre }}</small>
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-dark border">{{ f.etiqueta_roles }}</span>
+                    </td>
+                    <td>
+                        {% if f.estado == 'ACTIVO' %}
+                            <span class="badge bg-success">Activo</span>
+                        {% elif f.estado == 'PENDIENTE' %}
+                            <span class="badge bg-warning text-dark">Pendiente</span>
+                        {% elif f.estado == 'BLOQUEADO' %}
+                            <span class="badge bg-danger">Bloqueado</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'funcionarios_editar' f.id %}" class="btn btn-sm btn-outline-danger py-0 px-2">
+                            <i class="bi bi-pencil-square me-1"></i>Editar
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center py-4 text-muted">No hay funcionarios registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,5 +1,7 @@
+from functools import wraps
 from django import forms
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User, Group
 from django.db.models import Q, ProtectedError
 from django.forms import modelform_factory
@@ -13,7 +15,23 @@ from .models import (
     Actividad, TuboCarta, Evidencia, HistorialTubo,
     BitacoraAuditoria, GestionSocial
 )
-from .views import roles_requeridos
+
+
+# ==============================================================================
+# DECORADOR EXCLUSIVO DEL DESARROLLADOR (NINGÚN EMPLEADO TIENE ACCESO)
+# ==============================================================================
+def solo_desarrollador(view_func):
+    @wraps(view_func)
+    @login_required(login_url='login')
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            messages.error(
+                request,
+                "Acceso restringido: el Centro de Administración es exclusivo del desarrollador del sistema."
+            )
+            return redirect('dashboard_inicio')
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
 
 
 # ==============================================================================
@@ -55,7 +73,7 @@ class AdminUserForm(forms.ModelForm):
 
 
 # ==============================================================================
-# REGISTRO COMPLETO DE LOS 22 MODELOS (TODO LO DE DJANGO ADMIN)
+# REGISTRO COMPLETO DE LOS 22 MODELOS (EXCLUSIVO DESARROLLADOR)
 # ==============================================================================
 ADMIN_MODELS = {
     # --- 1. Autenticación y Cuentas ---
@@ -250,10 +268,11 @@ ADMIN_MODELS = {
             ('rut', 'RUT'),
             ('nombre_completo', 'Nombre Completo'),
             ('telefono', 'Teléfono'),
+            ('direccion', 'Dirección'),
             ('territorio', 'Territorio'),
             ('activo', 'Activo'),
         ],
-        'search_fields': ['rut', 'nombres', 'apellidos', 'territorio__nombre'],
+        'search_fields': ['rut', 'nombres', 'apellidos', 'direccion', 'territorio__nombre'],
     },
     'juntas-vecinos': {
         'model': JuntaVecinos,
@@ -314,10 +333,10 @@ ADMIN_MODELS = {
             ('fecha_actividad', 'Fecha'),
             ('funcionario_autor', 'Autor'),
             ('solicitante_nombre', 'Solicitante'),
-            ('estado_tubo', 'Tubo'),
+            ('etapa_seguimiento', 'Seguimiento'),
             ('estado_verificacion', 'Verificación'),
         ],
-        'search_fields': ['codigo', 'tipo_actividad', 'solicitante_nombre', 'solicitante_rut', 'descripcion'],
+        'search_fields': ['codigo', 'tipo_actividad', 'solicitante_nombre', 'solicitante_rut', 'junta_solicitante__nombre', 'entidad_reparacion', 'descripcion'],
     },
     'tubo-cartas': {
         'model': TuboCarta,
@@ -360,6 +379,7 @@ ADMIN_MODELS = {
         'list_display': [
             ('codigo', 'Código'),
             ('actividad', 'Actividad'),
+            ('etapa', 'Etapa'),
             ('tipo_archivo', 'Tipo'),
             ('autor', 'Autor'),
             ('fecha_carga', 'Fecha Carga'),
@@ -474,16 +494,16 @@ def _registrar_auditoria(request, cfg, accion, detalle):
     func_actual = getattr(request.user, 'funcionario', None)
     BitacoraAuditoria.objects.create(
         usuario=func_actual,
-        modulo=f"Admin SGR / {cfg['nombre']}",
+        modulo=f"Admin Desarrollador / {cfg['nombre']}",
         accion=accion,
         detalle=detalle
     )
 
 
 # ==============================================================================
-# VISTAS DEL CENTRO DE ADMINISTRACIÓN INTEGRADO (SOLO ROL ADMIN)
+# VISTAS DEL CENTRO DE ADMINISTRACIÓN INTEGRADO (EXCLUSIVO DESARROLLADOR)
 # ==============================================================================
-@roles_requeridos('ADMIN')
+@solo_desarrollador
 def admin_sgr_home(request):
     categorias = {}
     total_registros = 0
@@ -509,7 +529,7 @@ def admin_sgr_home(request):
     })
 
 
-@roles_requeridos('ADMIN')
+@solo_desarrollador
 def admin_sgr_list(request, slug):
     cfg = _obtener_config_o_404(slug)
     model = cfg['model']
@@ -543,7 +563,7 @@ def admin_sgr_list(request, slug):
     })
 
 
-@roles_requeridos('ADMIN')
+@solo_desarrollador
 def admin_sgr_crear(request, slug):
     cfg = _obtener_config_o_404(slug)
     FormClass = _construir_form_class(cfg)
@@ -568,7 +588,7 @@ def admin_sgr_crear(request, slug):
     })
 
 
-@roles_requeridos('ADMIN')
+@solo_desarrollador
 def admin_sgr_editar(request, slug, pk):
     cfg = _obtener_config_o_404(slug)
     obj = get_object_or_404(cfg['model'], pk=pk)
@@ -595,7 +615,7 @@ def admin_sgr_editar(request, slug, pk):
     })
 
 
-@roles_requeridos('ADMIN')
+@solo_desarrollador
 def admin_sgr_eliminar(request, slug, pk):
     if request.method == 'POST':
         cfg = _obtener_config_o_404(slug)

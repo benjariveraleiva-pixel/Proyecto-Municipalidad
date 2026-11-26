@@ -1,4 +1,5 @@
 from django.urls import path
+from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
 from sgr import views, views_admin
@@ -12,16 +13,27 @@ urlpatterns = [
     path('dashboard/aprobadas/', views.dashboard_aprobadas_view, name='dashboard_aprobadas'),
     path('dashboard/pendientes/', views.dashboard_pendientes_view, name='dashboard_pendientes'),
     path('dashboard/vencidos/', views.dashboard_vencidos_view, name='dashboard_vencidos'),
+
+    # Funcionarios (Gestión interna SGR - Solo ADMIN)
+    path('funcionarios/', views.funcionarios_list_view, name='funcionarios_list'),
     path('funcionarios/nuevo/', views.FuncionarioCreateView.as_view(), name='funcionarios_crear'),
+    path('funcionarios/<int:pk>/editar/', views.funcionario_editar_view, name='funcionarios_editar'),
 
     # Metas y Flujos del Tubo
     path('metas/', views.asignacion_metas_view, name='asignacion_metas'),
+    path('metas/<int:pk>/editar/', views.asignacion_meta_editar_view, name='asignacion_meta_editar'),
+    path('metas/<int:pk>/toggle/', views.asignacion_meta_toggle_view, name='asignacion_meta_toggle'),
     path('tubo-compromisos/', views.tubo_compromisos_view, name='tubo_compromisos'),
     path('tubo-compromisos/<int:pk>/estado/', views.cambiar_estado_compromiso, name='cambiar_estado_compromiso'),
     path('tubo-cartas/', views.tubo_cartas_view, name='tubo_cartas'),
     path('tubo-cartas/<int:pk>/estado/', views.cambiar_estado_carta, name='cambiar_estado_carta'),
 
-    # Mantenedores Operativos (CRUD)
+    # Seguimiento de Solicitudes (Flujo de 5 Etapas)
+    path('seguimiento/', views.seguimiento_list_view, name='seguimiento_list'),
+    path('seguimiento/<int:pk>/', views.seguimiento_detalle_view, name='seguimiento_detalle'),
+    path('seguimiento/<int:pk>/avanzar/', views.seguimiento_avanzar_view, name='seguimiento_avanzar'),
+
+    # Mantenedores Operativos (CRUD separados)
     path('vecinos/', views.VecinoListView.as_view(), name='vecinos_list'),
     path('vecinos/nuevo/', views.VecinoCreateView.as_view(), name='vecinos_crear'),
     path('vecinos/registro-rapido/', views.vecino_registro_rapido_view, name='vecino_registro_rapido'),
@@ -37,6 +49,7 @@ urlpatterns = [
 
     # Actividades, Evidencias y Verificación
     path('actividades/', views.actividades_list_view, name='actividades_list'),
+    path('actividades/<int:pk>/editar/', views.actividad_editar_view, name='actividad_editar'),
     path('actividades/<int:pk>/evidencia/', views.adjuntar_evidencia_view, name='adjuntar_evidencia'),
     path('verificacion/', views.bandeja_verificacion_view, name='bandeja_verificacion'),
     path('verificacion/<int:pk>/dictaminar/', views.dictaminar_actividad_view, name='dictaminar_actividad'),
@@ -53,19 +66,18 @@ urlpatterns = [
     path('reportes-bitacora/', views.reportes_bitacora_view, name='reportes_bitacora'),
     path('reportes-bitacora/exportar/', views.exportar_reporte_csv, name='exportar_reporte_csv'),
 
-    # Centro de Administración Integral SGR (Reemplazo total de Django Admin - Solo ADMIN)
+    # Centro de Administración Integral SGR (Exclusivo Desarrollador / Superuser)
     path('administracion/', views_admin.admin_sgr_home, name='admin_sgr_home'),
     path('administracion/<slug:slug>/', views_admin.admin_sgr_list, name='admin_sgr_list'),
     path('administracion/<slug:slug>/nuevo/', views_admin.admin_sgr_crear, name='admin_sgr_crear'),
     path('administracion/<slug:slug>/<int:pk>/editar/', views_admin.admin_sgr_editar, name='admin_sgr_editar'),
     path('administracion/<slug:slug>/<int:pk>/eliminar/', views_admin.admin_sgr_eliminar, name='admin_sgr_eliminar'),
-
-    
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    handler400 = 'sgr.error_handlers.error_400_view'
-    handler403 = 'sgr.error_handlers.error_403_view'
-    handler404 = 'sgr.error_handlers.error_404_view'
-    handler500 = 'sgr.error_handlers.error_500_view'
+
+handler400 = 'sgr.error_handlers.error_400_view'
+handler403 = 'sgr.error_handlers.error_403_view'
+handler404 = 'sgr.error_handlers.error_404_view'
+handler500 = 'sgr.error_handlers.error_500_view'

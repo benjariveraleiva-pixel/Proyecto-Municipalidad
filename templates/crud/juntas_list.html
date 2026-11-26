@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row g-3 mb-4 animate-fade-up">
+    <div class="col-md-6">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Total Juntas de Vecinos Registradas</small>
+            <h3 class="fw-extrabold mb-0" style="color: var(--muni-granate);">{{ total_juntas }}</h3>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="muni-card muni-card-accent py-3">
+            <small class="text-muted fw-bold">Organizaciones Activas</small>
+            <h3 class="fw-extrabold mb-0 text-success">{{ total_activas }}</h3>
+        </div>
+    </div>
+</div>
+
+<div class="muni-card animate-fade-up delay-1">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">
+                <i class="bi bi-houses-fill me-2"></i>Juntas de Vecinos (JJVV)
+            </h4>
+            <small class="text-muted">Catastro independiente de organizaciones comunitarias por delegación y territorio</small>
+        </div>
+        <a href="{% url 'juntas_crear' %}" class="btn-muni text-decoration-none">
+            <i class="bi bi-plus-circle-fill me-1"></i>Nueva Junta de Vecinos
+        </a>
+    </div>
+
+    <form method="get" class="row g-2 mb-3">
+        <div class="col-md-5">
+            <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm"
+                   placeholder="Buscar por código, nombre, dirección o territorio...">
+        </div>
+        <div class="col-md-3">
+            <select name="delegacion" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todas las delegaciones</option>
+                {% for d in delegaciones %}
+                    <option value="{{ d.id }}" {% if delegacion_filtro == d.id|stringformat:"s" %}selected{% endif %}>{{ d.nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Todos los estados</option>
+                <option value="activas" {% if estado_filtro == 'activas' %}selected{% endif %}>Activas</option>
+                <option value="inactivas" {% if estado_filtro == 'inactivas' %}selected{% endif %}>Inactivas</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+            <button type="submit" class="btn btn-sm text-white w-100" style="background: var(--muni-crimson);">Buscar</button>
+            <a href="{% url 'juntas_list' %}" class="btn btn-sm btn-outline-secondary" title="Limpiar filtros"><i class="bi bi-x-lg"></i></a>
+        </div>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table-muni">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Junta de Vecinos</th>
+                    <th>Dirección</th>
+                    <th>Delegación / Territorio</th>
+                    <th>Constitución</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for j in juntas %}
+                <tr>
+                    <td class="fw-bold" style="color: var(--muni-granate);">{{ j.codigo }}</td>
+                    <td class="fw-semibold">{{ j.nombre }}</td>
+                    <td><small class="text-muted">{{ j.direccion }}</small></td>
+                    <td>
+                        <div class="small fw-semibold">{{ j.delegacion.nombre }}</div>
+                        <small class="text-muted">{{ j.territorio.nombre }}</small>
+                    </td>
+                    <td><small>{{ j.fecha_constitucion|date:"d/m/Y" }}</small></td>
+                    <td>
+                        {% if j.activa %}
+                            <span class="badge bg-success">Activa</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactiva</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a href="{% url 'juntas_editar' j.id %}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Editar JJVV">
+                                <i class="bi bi-pencil-square me-1"></i>Editar
+                            </a>
+                            <a href="{% url 'seguimiento_list' %}?tipo_solicitante=JUNTA&q={{ j.nombre|urlencode }}"
+                               class="btn btn-sm btn-outline-danger py-0 px-2" title="Ver solicitudes de esta Junta">
+                                <i class="bi bi-diagram-3-fill me-1"></i>Solicitudes
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center py-4 text-muted">
+                        No hay Juntas de Vecinos registradas que coincidan con la búsqueda.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,4 +1,5 @@
 import csv
+import os
 import random
 import string
 from functools import wraps
@@ -9,12 +10,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.contrib.messages.views import SuccessMessageMixin
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db.models import Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.generic import ListView, CreateView, UpdateView
 
 from .models import (
@@ -25,7 +28,8 @@ from .models import (
 from .forms import (
     AsignacionMetaForm, CompromisoTuboForm, TuboCartaForm,
     VecinoForm, JuntaVecinosForm, HitoForm, FuncionarioCreateForm,
-    ActividadRegistroForm, SubirEvidenciaForm
+    FuncionarioUpdateForm, ActividadRegistroForm, ActividadEditarForm,
+    SubirEvidenciaForm
 )
 
 
@@ -178,11 +182,15 @@ def dashboard_inicio(request):
     filtro_q = request.GET.get('q', '').strip()
 
     # Actualizar automáticamente compromisos vencidos
-    for act in Actividad.objects.filter(ingresa_al_tubo=True, estado_tubo__in=['PENDIENTE', 'EN_PROCESO']):
-        act.save()
+    hoy = timezone.localdate()
+    Actividad.objects.filter(
+        ingresa_al_tubo=True,
+        estado_tubo__in=['PENDIENTE', 'EN_PROCESO'],
+        fecha_compromiso__lt=hoy
+    ).update(estado_tubo='VENCIDO')
 
     actividades_qs = Actividad.objects.select_related(
-        'funcionario_autor', 'responsable_tubo', 'territorio', 'meta_asignada__meta'
+        'funcionario_autor', 'responsable_tubo', 'territorio', 'meta_asignada__meta', 'junta_solicitante'
     )
     asignaciones_qs = AsignacionMeta.objects.filter(activa=True).select_related('funcionario', 'meta')
     cartas_qs = TuboCarta.objects.select_related('responsable_seguimiento', 'delegacion')
@@ -264,7 +272,8 @@ def dashboard_inicio(request):
         actividades_qs = actividades_qs.filter(
             Q(codigo__icontains=filtro_q) |
             Q(solicitante_nombre__icontains=filtro_q) |
-            Q(solicitante_rut__icontains=filtro_q)
+            Q(solicitante_rut__icontains=filtro_q) |
+            Q(junta_solicitante__nombre__icontains=filtro_q)
         )
 
     # KPIs Reales
@@ -483,14 +492,18 @@ def _obtener_base_dashboard(request):
     filtro_delegacion = request.GET.get('delegacion', '').strip()
     filtro_funcionario = request.GET.get('funcionario', '').strip()
 
-    for act in Actividad.objects.filter(ingresa_al_tubo=True, estado_tubo__in=['PENDIENTE', 'EN_PROCESO']):
-        act.save()
+    hoy = timezone.localdate()
+    Actividad.objects.filter(
+        ingresa_al_tubo=True,
+        estado_tubo__in=['PENDIENTE', 'EN_PROCESO'],
+        fecha_compromiso__lt=hoy
+    ).update(estado_tubo='VENCIDO')
 
     actividades_qs = Actividad.objects.select_related(
         'funcionario_autor', 'funcionario_autor__delegacion', 'funcionario_autor__cargo',
         'responsable_tubo', 'responsable_tubo__delegacion',
         'territorio', 'territorio__delegacion',
-        'meta_asignada__meta', 'verificado_por'
+        'meta_asignada__meta', 'verificado_por', 'junta_solicitante'
     ).prefetch_related('evidencias')
 
     asignaciones_qs = AsignacionMeta.objects.filter(activa=True).select_related(
@@ -762,7 +775,85 @@ def dashboard_vencidos_view(request):
 
 
 # ==============================================================================
-# MÓDULO 1: ASIGNACIÓN DE METAS A FUNCIONARIOS (SOLO ADMIN Y DELEGADO)
+# GESTIÓN INTERNA DE FUNCIONARIOS (SOLO ADMIN - SIN ACCESO AL PANEL TÉCNICO)
+# ==============================================================================
+@roles_requeridos('ADMIN')
+def funcionarios_list_view(request):
+    q = request.GET.get('q', '').strip()
+    delegacion_id = request.GET.get('delegacion', '').strip()
+    estado_filtro = request.GET.get('estado', '').strip()
+
+    funcionarios = Funcionario.objects.select_related('user', 'cargo', 'delegacion').prefetch_related('roles').order_by('nombres', 'apellidos')
+
+    if q:
+        funcionarios = funcionarios.filter(
+            Q(nombres__icontains=q) |
+            Q(apellidos__icontains=q) |
+            Q(rut__icontains=q) |
+            Q(correo__icontains=q) |
+            Q(user__username__icontains=q)
+        )
+    if delegacion_id:
+        funcionarios = funcionarios.filter(delegacion_id=delegacion_id)
+    if estado_filtro:
+        funcionarios = funcionarios.filter(estado=estado_filtro)
+
+    return render(request, 'crud/funcionarios_list.html', {
+        'funcionarios': funcionarios,
+        'delegaciones': Delegacion.objects.filter(activa=True).order_by('nombre'),
+        'estados_cuenta': Funcionario.ESTADOS_CUENTA,
+        'q': q,
+        'delegacion_filtro': delegacion_id,
+        'estado_filtro': estado_filtro,
+    })
+
+
+@roles_requeridos('ADMIN')
+def funcionario_editar_view(request, pk):
+    func_obj = get_object_or_404(Funcionario.objects.select_related('user'), pk=pk)
+    func_autor = getattr(request.user, 'funcionario', None)
+
+    if func_obj.user.is_superuser and not request.user.is_superuser:
+        messages.error(request, "Solo el desarrollador puede modificar la cuenta de superusuario.")
+        return redirect('funcionarios_list')
+
+    if request.method == 'POST':
+        form = FuncionarioUpdateForm(request.POST, instance=func_obj)
+        if form.is_valid():
+            funcionario = form.save()
+            roles_seleccionados = form.cleaned_data['roles']
+            funcionario.roles.set(roles_seleccionados)
+
+            # Sincronizar datos del User sin otorgar is_staff a empleados
+            user = funcionario.user
+            user.first_name = funcionario.nombres
+            user.last_name = funcionario.apellidos
+            user.email = funcionario.correo
+            user.is_active = (funcionario.estado != 'INACTIVO')
+            if not user.is_superuser:
+                user.is_staff = False
+            user.save()
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_autor,
+                modulo='Seguridad / Usuarios',
+                accion='Edición de Funcionario',
+                detalle=f"Se actualizaron datos/roles de {funcionario.nombre_completo} ({funcionario.rut}). Estado: {funcionario.get_estado_display()}."
+            )
+            messages.success(request, f"Funcionario {funcionario.nombre_completo} actualizado correctamente.")
+            return redirect('funcionarios_list')
+    else:
+        form = FuncionarioUpdateForm(instance=func_obj)
+
+    return render(request, 'crud/form_base.html', {
+        'form': form,
+        'titulo': f"Editar Funcionario · {func_obj.nombre_completo}",
+        'url_cancelar': 'funcionarios_list',
+    })
+
+
+# ==============================================================================
+# MÓDULO 1: ASIGNACIÓN Y EDICIÓN DE METAS A FUNCIONARIOS (ADMIN Y DELEGADO)
 # ==============================================================================
 @roles_requeridos('ADMIN', 'DELEGADO')
 def asignacion_metas_view(request):
@@ -771,7 +862,7 @@ def asignacion_metas_view(request):
     func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
     es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
 
-    funcionarios_scope = Funcionario.objects.select_related('cargo').all()
+    funcionarios_scope = Funcionario.objects.select_related('cargo', 'delegacion').all()
     if not es_admin and func_actual:
         funcionarios_scope = funcionarios_scope.filter(delegacion=func_actual.delegacion)
 
@@ -799,8 +890,10 @@ def asignacion_metas_view(request):
 
     resumen_funcionarios = []
     for f in funcionarios_scope:
-        metas_f = AsignacionMeta.objects.filter(funcionario=f, trimestre=trimestre_activo, activa=True).select_related('meta')
-        total_pond = metas_f.aggregate(total=Sum('ponderacion'))['total'] or 0
+        metas_f = AsignacionMeta.objects.filter(
+            funcionario=f, trimestre=trimestre_activo
+        ).select_related('meta').order_by('-activa', 'meta__codigo')
+        total_pond = metas_f.filter(activa=True).aggregate(total=Sum('ponderacion'))['total'] or 0
         resumen_funcionarios.append({
             'funcionario': f,
             'metas': metas_f,
@@ -813,6 +906,454 @@ def asignacion_metas_view(request):
         'resumen_funcionarios': resumen_funcionarios,
         'trimestre_activo': trimestre_activo,
     })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO')
+def asignacion_meta_editar_view(request, pk):
+    asig = get_object_or_404(AsignacionMeta.objects.select_related('funcionario', 'meta', 'trimestre'), pk=pk)
+    func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+
+    if not es_admin and func_actual and asig.funcionario.delegacion != func_actual.delegacion:
+        messages.error(request, "No tiene permisos para editar metas de otra delegación.")
+        return redirect('asignacion_metas')
+
+    funcionarios_scope = Funcionario.objects.select_related('cargo').all()
+    if not es_admin and func_actual:
+        funcionarios_scope = funcionarios_scope.filter(delegacion=func_actual.delegacion)
+
+    if request.method == 'POST':
+        form = AsignacionMetaForm(request.POST, instance=asig)
+        form.fields['funcionario'].queryset = funcionarios_scope
+        if form.is_valid():
+            asig_editada = form.save()
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Metas e Indicadores',
+                accion='Edición de Meta Asignada',
+                detalle=f"Meta {asig_editada.meta.codigo} de {asig_editada.funcionario.nombre_completo} actualizada (Obj: {asig_editada.cantidad_objetivo}, Pond: {asig_editada.ponderacion}%, Activa: {asig_editada.activa})."
+            )
+            messages.success(request, f"Meta {asig_editada.meta.codigo} actualizada correctamente.")
+            return redirect('asignacion_metas')
+        else:
+            messages.error(request, "No se pudo actualizar la meta. Revise las validaciones.")
+    else:
+        form = AsignacionMetaForm(instance=asig)
+        form.fields['funcionario'].queryset = funcionarios_scope
+
+    return render(request, 'crud/form_base.html', {
+        'form': form,
+        'titulo': f"Editar Meta Asignada · {asig.meta.codigo} ({asig.funcionario.nombre_completo})",
+        'url_cancelar': 'asignacion_metas',
+    })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO')
+def asignacion_meta_toggle_view(request, pk):
+    if request.method == 'POST':
+        asig = get_object_or_404(AsignacionMeta.objects.select_related('funcionario', 'meta', 'trimestre'), pk=pk)
+        func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+        es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+
+        if not es_admin and func_actual and asig.funcionario.delegacion != func_actual.delegacion:
+            messages.error(request, "No tiene permisos para modificar metas de otra delegación.")
+            return redirect('asignacion_metas')
+
+        asig.activa = not asig.activa
+        try:
+            asig.full_clean()
+            asig.save()
+            estado_txt = "activada" if asig.activa else "desactivada"
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Metas e Indicadores',
+                accion=f"Meta {estado_txt.capitalize()}",
+                detalle=f"Meta {asig.meta.codigo} de {asig.funcionario.nombre_completo} fue {estado_txt}."
+            )
+            messages.success(request, f"Meta {asig.meta.codigo} de {asig.funcionario.nombre_completo} {estado_txt} correctamente.")
+        except ValidationError as e:
+            texto_error = "; ".join(e.messages)
+            messages.error(request, f"No se pudo cambiar el estado de la meta: {texto_error}")
+
+    return redirect('asignacion_metas')
+
+
+# ==============================================================================
+# MÓDULO NUEVO: SEGUIMIENTO DE SOLICITUDES (FLUJO DE 5 ETAPAS)
+# ==============================================================================
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO', 'VERIFICADOR')
+def seguimiento_list_view(request):
+    func_actual = getattr(request.user, 'funcionario', None)
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado and not es_admin)
+    es_verificador = bool(func_actual and func_actual.es_verificador and not es_admin and not es_delegado)
+    es_solo_funcionario = bool(func_actual and func_actual.es_solo_funcionario)
+    puede_filtrar_delegacion = bool(es_admin or es_verificador)
+
+    q = request.GET.get('q', '').strip()
+    etapa_filtro = request.GET.get('etapa', '').strip()
+    tipo_sol_filtro = request.GET.get('tipo_solicitante', '').strip()
+    delegacion_filtro = request.GET.get('delegacion', '').strip()
+
+    qs_base = Actividad.objects.select_related(
+        'funcionario_autor', 'funcionario_autor__delegacion',
+        'responsable_tubo', 'territorio', 'territorio__delegacion',
+        'meta_asignada__meta', 'vecino_solicitante', 'junta_solicitante'
+    ).prefetch_related('evidencias').order_by('-id')
+
+    if es_solo_funcionario and func_actual:
+        qs_base = qs_base.filter(Q(funcionario_autor=func_actual) | Q(responsable_tubo=func_actual))
+    elif es_delegado and func_actual:
+        qs_base = qs_base.filter(
+            Q(territorio__delegacion=func_actual.delegacion) |
+            Q(funcionario_autor__delegacion=func_actual.delegacion) |
+            Q(responsable_tubo__delegacion=func_actual.delegacion)
+        )
+
+    if puede_filtrar_delegacion and delegacion_filtro:
+        qs_base = qs_base.filter(
+            Q(territorio__delegacion_id=delegacion_filtro) |
+            Q(funcionario_autor__delegacion_id=delegacion_filtro)
+        )
+
+    resumen_etapas = {
+        'etapa_1': qs_base.filter(etapa_seguimiento=1).count(),
+        'etapa_2': qs_base.filter(etapa_seguimiento=2).count(),
+        'etapa_3': qs_base.filter(etapa_seguimiento=3).count(),
+        'etapa_4': qs_base.filter(etapa_seguimiento=4).count(),
+        'etapa_5': qs_base.filter(etapa_seguimiento=5).count(),
+    }
+
+    actividades = qs_base
+    if etapa_filtro.isdigit():
+        actividades = actividades.filter(etapa_seguimiento=int(etapa_filtro))
+    if tipo_sol_filtro:
+        actividades = actividades.filter(tipo_solicitante=tipo_sol_filtro)
+    if q:
+        actividades = actividades.filter(
+            Q(codigo__icontains=q) |
+            Q(tipo_actividad__icontains=q) |
+            Q(descripcion__icontains=q) |
+            Q(solicitante_nombre__icontains=q) |
+            Q(solicitante_rut__icontains=q) |
+            Q(junta_solicitante__nombre__icontains=q) |
+            Q(entidad_reparacion__icontains=q) |
+            Q(territorio__nombre__icontains=q)
+        )
+
+    return render(request, 'seguimiento_list.html', {
+        'actividades': actividades,
+        'resumen_etapas': resumen_etapas,
+        'etapas_choices': Actividad.ETAPAS_SEGUIMIENTO,
+        'tipos_solicitante': Actividad.TIPOS_SOLICITANTE,
+        'delegaciones': Delegacion.objects.filter(activa=True).order_by('nombre'),
+        'puede_filtrar_delegacion': puede_filtrar_delegacion,
+        'q': q,
+        'etapa_filtro': etapa_filtro,
+        'tipo_sol_filtro': tipo_sol_filtro,
+        'delegacion_filtro': delegacion_filtro,
+    })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO', 'VERIFICADOR')
+def seguimiento_detalle_view(request, pk):
+    act = get_object_or_404(
+        Actividad.objects.select_related(
+            'funcionario_autor', 'funcionario_autor__delegacion',
+            'responsable_tubo', 'territorio', 'territorio__delegacion',
+            'meta_asignada', 'meta_asignada__meta', 'meta_asignada__trimestre',
+            'vecino_solicitante', 'junta_solicitante', 'verificado_por'
+        ).prefetch_related('evidencias', 'historial_tubo__autor'),
+        pk=pk
+    )
+
+    func_actual = getattr(request.user, 'funcionario', None)
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado and not es_admin)
+    es_verificador = bool(func_actual and func_actual.es_verificador)
+    es_solo_funcionario = bool(func_actual and func_actual.es_solo_funcionario)
+
+    if es_solo_funcionario and func_actual and act.funcionario_autor != func_actual and act.responsable_tubo != func_actual:
+        messages.error(request, "No tiene permisos para ver el seguimiento de esta solicitud.")
+        return redirect('seguimiento_list')
+    if es_delegado and func_actual:
+        delg_id = func_actual.delegacion_id
+        if act.territorio.delegacion_id != delg_id and act.funcionario_autor.delegacion_id != delg_id and act.responsable_tubo.delegacion_id != delg_id:
+            messages.error(request, "No tiene permisos para ver solicitudes de otra delegación.")
+            return redirect('seguimiento_list')
+
+    puede_operar_etapas = bool(
+        not act.bloqueada_edicion and (
+            es_admin or es_delegado or (func_actual and (act.funcionario_autor == func_actual or act.responsable_tubo == func_actual))
+        )
+    )
+    puede_finalizar = bool(es_admin or es_verificador)
+
+    pasos = [
+        {
+            'numero': 1,
+            'etiqueta': 'Entrada',
+            'titulo': 'Solicitud (Inicio)',
+            'detalle': act.tipo_actividad,
+            'fecha': act.fecha_actividad,
+            'completado': act.etapa_seguimiento >= 1,
+            'actual': act.etapa_seguimiento == 1,
+        },
+        {
+            'numero': 2,
+            'etiqueta': 'Evidencia Problema',
+            'titulo': 'Verificar Terreno y Subir Evidencia',
+            'detalle': act.obs_etapa_2 or ('Evidencia del problema cargada' if act.evidencias_problema.exists() else 'Pendiente visita y foto inicial'),
+            'fecha': act.fecha_etapa_2,
+            'completado': act.etapa_seguimiento >= 2,
+            'actual': act.etapa_seguimiento == 2,
+        },
+        {
+            'numero': 3,
+            'etiqueta': 'Proceso',
+            'titulo': 'Asignar Reparación / Gestión',
+            'detalle': act.entidad_reparacion or 'Pendiente derivación a empresa o unidad',
+            'fecha': act.fecha_etapa_3,
+            'completado': act.etapa_seguimiento >= 3,
+            'actual': act.etapa_seguimiento == 3,
+        },
+        {
+            'numero': 4,
+            'etiqueta': 'Evidencia Terminada',
+            'titulo': 'Verificar Terreno Terminado',
+            'detalle': act.obs_etapa_4 or ('Evidencia de término cargada' if act.evidencias_terminadas.exists() else 'Pendiente verificación de término'),
+            'fecha': act.fecha_etapa_4,
+            'completado': act.etapa_seguimiento >= 4,
+            'actual': act.etapa_seguimiento == 4,
+        },
+        {
+            'numero': 5,
+            'etiqueta': 'Salida',
+            'titulo': 'Finalizar / Cierre',
+            'detalle': act.obs_etapa_5 or act.get_estado_verificacion_display(),
+            'fecha': act.fecha_etapa_5 or (act.fecha_verificacion.date() if act.fecha_verificacion else None),
+            'completado': act.etapa_seguimiento >= 5,
+            'actual': act.etapa_seguimiento == 5,
+        },
+    ]
+
+    meta_asig = act.meta_asignada
+    meta_tengo_pct = meta_asig.porcentaje_cumplimiento_real if meta_asig else 0.0
+    meta_falta_pct = meta_asig.porcentaje_faltante if meta_asig else 100.0
+
+    return render(request, 'seguimiento_detalle.html', {
+        'actividad': act,
+        'pasos': pasos,
+        'evidencias_problema': act.evidencias.filter(etapa='PROBLEMA').order_by('-fecha_carga'),
+        'evidencias_terminadas': act.evidencias.filter(etapa='TERMINADO').order_by('-fecha_carga'),
+        'evidencias_generales': act.evidencias.filter(etapa='GENERAL').order_by('-fecha_carga'),
+        'puede_operar_etapas': puede_operar_etapas,
+        'puede_finalizar': puede_finalizar,
+        'meta_tengo_pct': meta_tengo_pct,
+        'meta_falta_pct': meta_falta_pct,
+        'hoy_iso': timezone.localdate().isoformat(),
+    })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO', 'VERIFICADOR')
+def seguimiento_avanzar_view(request, pk):
+    if request.method != 'POST':
+        return redirect('seguimiento_detalle', pk=pk)
+
+    act = get_object_or_404(Actividad.objects.select_related('funcionario_autor', 'responsable_tubo', 'territorio'), pk=pk)
+    func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado)
+    es_verificador = bool(func_actual and func_actual.es_verificador)
+
+    try:
+        etapa_objetivo = int(request.POST.get('etapa_objetivo', '0'))
+    except ValueError:
+        messages.error(request, "Etapa de seguimiento inválida.")
+        return redirect('seguimiento_detalle', pk=pk)
+
+    fecha_raw = request.POST.get('fecha_etapa', '').strip()
+    fecha_etapa = parse_date(fecha_raw) if fecha_raw else timezone.localdate()
+    if not fecha_etapa:
+        fecha_etapa = timezone.localdate()
+
+    observacion = request.POST.get('observacion', '').strip()
+    archivo = request.FILES.get('archivo_evidencia')
+
+    if archivo:
+        ext = os.path.splitext(archivo.name)[1].lower()
+        permitidos = ['.jpg', '.jpeg', '.png', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
+        if ext not in permitidos:
+            messages.error(request, "Formato de evidencia no permitido. Use JPG, PNG, PDF, Word o Excel.")
+            return redirect('seguimiento_detalle', pk=pk)
+        if archivo.size > 10 * 1024 * 1024:
+            messages.error(request, "El archivo supera el límite máximo de 10 MB.")
+            return redirect('seguimiento_detalle', pk=pk)
+
+    # Etapas operativas 2, 3 y 4
+    if etapa_objetivo in (2, 3, 4):
+        if act.bloqueada_edicion:
+            messages.error(request, f"La solicitud {act.codigo} ya fue cerrada/aprobada y no permite cambios operativos.")
+            return redirect('seguimiento_detalle', pk=pk)
+
+        autorizado_operar = es_admin or es_delegado or (func_actual in (act.funcionario_autor, act.responsable_tubo))
+        if not autorizado_operar:
+            messages.error(request, "No tiene permisos para actualizar las etapas operativas de esta solicitud.")
+            return redirect('seguimiento_detalle', pk=pk)
+
+        if etapa_objetivo == 2:
+            if not archivo and not act.evidencias.filter(etapa='PROBLEMA').exists():
+                messages.error(request, "Para registrar la Etapa 2 debe adjuntar la evidencia fotográfica o documento del problema.")
+                return redirect('seguimiento_detalle', pk=pk)
+
+            if archivo:
+                Evidencia.objects.create(
+                    actividad=act,
+                    archivo=archivo,
+                    etapa='PROBLEMA',
+                    tipo_archivo='Evidencia Problema (Terreno)',
+                    autor=func_actual,
+                    observacion=observacion or 'Verificación del problema en terreno'
+                )
+            act.fecha_etapa_2 = fecha_etapa
+            act.obs_etapa_2 = observacion or act.obs_etapa_2 or 'Problema verificado en terreno'
+            act.etapa_seguimiento = max(act.etapa_seguimiento, 2)
+            act.save()
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Seguimiento',
+                accion='Etapa 2 · Evidencia Problema',
+                detalle=f"Solicitud {act.codigo}: verificada en terreno el {fecha_etapa.strftime('%d/%m/%Y')}. {act.obs_etapa_2}"
+            )
+            messages.success(request, f"Etapa 2 (Evidencia del Problema) registrada para {act.codigo}.")
+
+        elif etapa_objetivo == 3:
+            entidad = request.POST.get('entidad_reparacion', '').strip()
+            if not entidad:
+                messages.error(request, "Debe indicar la empresa, unidad o área asignada para la reparación/gestión.")
+                return redirect('seguimiento_detalle', pk=pk)
+
+            estado_tubo_ant = act.estado_tubo
+            act.fecha_etapa_3 = fecha_etapa
+            act.entidad_reparacion = entidad
+            act.obs_etapa_3 = observacion or f"Asignado a {entidad}"
+            if not act.area_apoyo:
+                act.area_apoyo = entidad[:120]
+            act.etapa_seguimiento = max(act.etapa_seguimiento, 3)
+            if act.ingresa_al_tubo and act.estado_tubo == 'PENDIENTE':
+                act.estado_tubo = 'EN_PROCESO'
+            act.save()
+
+            if act.ingresa_al_tubo and estado_tubo_ant != act.estado_tubo:
+                HistorialTubo.objects.create(
+                    actividad=act,
+                    estado_anterior=estado_tubo_ant,
+                    estado_nuevo=act.estado_tubo,
+                    responsable_anterior=act.responsable_tubo,
+                    responsable_nuevo=act.responsable_tubo,
+                    autor=func_actual,
+                    motivo_observacion=f"Seguimiento Etapa 3 · Derivado a {entidad}. {observacion}".strip()
+                )
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Seguimiento',
+                accion='Etapa 3 · Proceso / Derivación',
+                detalle=f"Solicitud {act.codigo} asignada a {entidad} el {fecha_etapa.strftime('%d/%m/%Y')}."
+            )
+            messages.success(request, f"Etapa 3 (Proceso) registrada: asignada a {entidad}.")
+
+        elif etapa_objetivo == 4:
+            if not archivo and not act.evidencias.filter(etapa='TERMINADO').exists():
+                messages.error(request, "Para registrar la Etapa 4 debe adjuntar la evidencia del trabajo terminado.")
+                return redirect('seguimiento_detalle', pk=pk)
+
+            if archivo:
+                Evidencia.objects.create(
+                    actividad=act,
+                    archivo=archivo,
+                    etapa='TERMINADO',
+                    tipo_archivo='Evidencia Terminada (Terreno)',
+                    autor=func_actual,
+                    observacion=observacion or 'Verificación de trabajo terminado en terreno'
+                )
+            estado_tubo_ant = act.estado_tubo
+            act.fecha_etapa_4 = fecha_etapa
+            act.obs_etapa_4 = observacion or act.obs_etapa_4 or 'Trabajo verificado como terminado en terreno'
+            act.etapa_seguimiento = max(act.etapa_seguimiento, 4)
+            if act.estado_verificacion in ['SOLICITUD_ANTECEDENTES', 'RECHAZADA']:
+                act.estado_verificacion = 'PENDIENTE'
+            if act.ingresa_al_tubo and act.estado_tubo in ['PENDIENTE', 'EN_PROCESO', 'VENCIDO']:
+                act.estado_tubo = 'REALIZADO'
+            act.save()
+
+            if act.ingresa_al_tubo and estado_tubo_ant != act.estado_tubo:
+                HistorialTubo.objects.create(
+                    actividad=act,
+                    estado_anterior=estado_tubo_ant,
+                    estado_nuevo=act.estado_tubo,
+                    responsable_anterior=act.responsable_tubo,
+                    responsable_nuevo=act.responsable_tubo,
+                    autor=func_actual,
+                    motivo_observacion=f"Seguimiento Etapa 4 · Evidencia de término cargada. {observacion}".strip()
+                )
+
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Seguimiento',
+                accion='Etapa 4 · Evidencia Terminada',
+                detalle=f"Solicitud {act.codigo}: evidencia terminada registrada el {fecha_etapa.strftime('%d/%m/%Y')}. Lista para cierre."
+            )
+            messages.success(request, f"Etapa 4 (Evidencia Terminada) registrada. La solicitud {act.codigo} quedó lista para cierre y validación final.")
+
+    # Etapa 5: Salida / Finalizar y abonar a la meta (Solo Verificador o Admin)
+    elif etapa_objetivo == 5:
+        if not (es_admin or es_verificador):
+            messages.error(request, "Solo un Verificador o Administrador puede ejecutar la Etapa 5 (Cierre definitivo y ponderación en meta).")
+            return redirect('seguimiento_detalle', pk=pk)
+
+        decision = request.POST.get('decision', 'APROBADA_PONDERA')
+        if decision not in ['APROBADA_PONDERA', 'APROBADA_NO_PONDERA']:
+            decision = 'APROBADA_PONDERA'
+
+        estado_tubo_ant = act.estado_tubo
+        act.etapa_seguimiento = 5
+        act.fecha_etapa_5 = fecha_etapa
+        act.obs_etapa_5 = observacion or 'Solicitud verificada y finalizada correctamente'
+        act.estado_verificacion = decision
+        act.observacion_verificador = act.obs_etapa_5
+        act.verificado_por = func_actual
+        act.fecha_verificacion = timezone.now()
+        act.estado_tubo = 'CERRADO'
+        act.fecha_cierre = fecha_etapa
+        act.save()
+
+        if act.ingresa_al_tubo:
+            HistorialTubo.objects.create(
+                actividad=act,
+                estado_anterior=estado_tubo_ant,
+                estado_nuevo='CERRADO',
+                responsable_anterior=act.responsable_tubo,
+                responsable_nuevo=act.responsable_tubo,
+                autor=func_actual,
+                motivo_observacion=f"Cierre definitivo Etapa 5 ({act.get_estado_verificacion_display()}). {act.obs_etapa_5}"
+            )
+
+        BitacoraAuditoria.objects.create(
+            usuario=func_actual,
+            modulo='Seguimiento',
+            accion='Etapa 5 · Cierre y Salida',
+            detalle=f"Solicitud {act.codigo} finalizada ({act.get_estado_verificacion_display()}) el {fecha_etapa.strftime('%d/%m/%Y')}."
+        )
+        messages.success(
+            request,
+            f"Etapa 5 completada: Solicitud {act.codigo} cerrada como '{act.get_estado_verificacion_display()}' y contabilizada en la meta."
+        )
+    else:
+        messages.error(request, "Etapa de seguimiento no reconocida.")
+
+    return redirect('seguimiento_detalle', pk=pk)
 
 
 # ==============================================================================
@@ -861,10 +1402,9 @@ def tubo_compromisos_view(request):
     estado_filtro = request.GET.get('estado', '').strip()
 
     compromisos = Actividad.objects.filter(ingresa_al_tubo=True).select_related(
-        'territorio', 'responsable_tubo', 'meta_asignada__meta', 'vecino_solicitante'
+        'territorio', 'responsable_tubo', 'meta_asignada__meta', 'vecino_solicitante', 'junta_solicitante'
     ).order_by('-id')
 
-    # Delegados y Funcionarios ven únicamente el Tubo de su propia delegación
     if not es_admin and not es_solo_verificador and func_actual:
         compromisos = compromisos.filter(
             Q(territorio__delegacion=func_actual.delegacion) |
@@ -882,6 +1422,7 @@ def tubo_compromisos_view(request):
             Q(vecino_solicitante__nombres__icontains=q) |
             Q(vecino_solicitante__apellidos__icontains=q) |
             Q(vecino_solicitante__rut__icontains=q) |
+            Q(junta_solicitante__nombre__icontains=q) |
             Q(descripcion__icontains=q) |
             Q(territorio__nombre__icontains=q) |
             Q(area_apoyo__icontains=q) |
@@ -918,7 +1459,6 @@ def cambiar_estado_compromiso(request, pk):
             messages.error(request, f"El compromiso {comp.codigo} ya fue validado, ponderado y cerrado definitivamente.")
             return redirect('tubo_compromisos')
 
-        # Un Funcionario solo puede modificar compromisos donde es el responsable asignado
         if not es_admin and not es_delegado and comp.responsable_tubo != func_actual:
             messages.error(
                 request,
@@ -933,7 +1473,6 @@ def cambiar_estado_compromiso(request, pk):
         estado_ant = comp.estado_tubo
         resp_ant = comp.responsable_tubo
 
-        # Solo Admin o Delegado pueden reasignar responsables
         if nuevo_resp_id and (es_admin or es_delegado):
             nuevo_resp = Funcionario.objects.filter(id=nuevo_resp_id).first()
             if nuevo_resp:
@@ -1063,6 +1602,37 @@ class JuntaListView(RolesRequeridosMixin, ListView):
     template_name = 'crud/juntas_list.html'
     context_object_name = 'juntas'
 
+    def get_queryset(self):
+        qs = JuntaVecinos.objects.select_related('delegacion', 'territorio').order_by('nombre')
+        q = self.request.GET.get('q', '').strip()
+        delegacion_id = self.request.GET.get('delegacion', '').strip()
+        estado = self.request.GET.get('estado', '').strip()
+
+        if q:
+            qs = qs.filter(
+                Q(codigo__icontains=q) |
+                Q(nombre__icontains=q) |
+                Q(direccion__icontains=q) |
+                Q(territorio__nombre__icontains=q)
+            )
+        if delegacion_id:
+            qs = qs.filter(delegacion_id=delegacion_id)
+        if estado == 'activas':
+            qs = qs.filter(activa=True)
+        elif estado == 'inactivas':
+            qs = qs.filter(activa=False)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['delegaciones'] = Delegacion.objects.filter(activa=True).order_by('nombre')
+        context['q'] = self.request.GET.get('q', '').strip()
+        context['delegacion_filtro'] = self.request.GET.get('delegacion', '').strip()
+        context['estado_filtro'] = self.request.GET.get('estado', '').strip()
+        context['total_juntas'] = JuntaVecinos.objects.count()
+        context['total_activas'] = JuntaVecinos.objects.filter(activa=True).count()
+        return context
+
 
 class JuntaCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateView):
     roles_permitidos = ['ADMIN', 'DELEGADO', 'FUNCIONARIO']
@@ -1116,25 +1686,25 @@ class FuncionarioCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateVie
     model = Funcionario
     form_class = FuncionarioCreateForm
     template_name = 'crud/form_base.html'
-    success_url = reverse_lazy('dashboard_inicio')
-    extra_context = {'titulo': 'Registrar Nuevo Funcionario', 'url_cancelar': 'dashboard_inicio'}
+    success_url = reverse_lazy('funcionarios_list')
+    extra_context = {'titulo': 'Registrar Nuevo Funcionario', 'url_cancelar': 'funcionarios_list'}
 
     def form_valid(self, form):
         caracteres = string.ascii_letters + string.digits
         clave_temporal = ''.join(random.choices(caracteres, k=8))
 
+        # Ningún empleado recibe is_staff=True; el panel técnico queda exclusivo para el desarrollador
         user = User.objects.create_user(
             username=form.cleaned_data['username'],
             email=form.cleaned_data['correo'],
             password=clave_temporal,
             first_name=form.cleaned_data['nombres'],
-            last_name=form.cleaned_data['apellidos']
+            last_name=form.cleaned_data['apellidos'],
+            is_staff=False,
+            is_superuser=False,
         )
 
         roles_seleccionados = form.cleaned_data['roles']
-        if roles_seleccionados.filter(nombre='ADMIN').exists():
-            user.is_staff = True
-            user.save()
 
         funcionario = form.save(commit=False)
         funcionario.user = user
@@ -1170,7 +1740,7 @@ class FuncionarioCreateView(RolesRequeridosMixin, SuccessMessageMixin, CreateVie
 
 
 # ==============================================================================
-# MÓDULO: REGISTRO DE ACTIVIDADES, EVIDENCIAS Y BANDEJA DEL VERIFICADOR
+# MÓDULO: REGISTRO Y EDICIÓN DE ACTIVIDADES, EVIDENCIAS Y BANDEJA DEL VERIFICADOR
 # ==============================================================================
 @roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
 def actividades_list_view(request):
@@ -1192,18 +1762,29 @@ def actividades_list_view(request):
             act = form.save(commit=False)
             act.funcionario_autor = func_actual
             act.estado_verificacion = 'PENDIENTE'
+            if act.tipo_solicitante == 'JUNTA' and act.junta_solicitante:
+                act.vecino_solicitante = None
+                if not act.solicitante_nombre:
+                    act.solicitante_nombre = act.junta_solicitante.nombre
             if not act.responsable_tubo_id:
                 act.responsable_tubo = func_actual
             act.save()
 
             archivo = form.cleaned_data.get('archivo_evidencia')
             if archivo:
+                obs_ev = form.cleaned_data.get('observacion_evidencia') or 'Evidencia inicial del problema'
                 Evidencia.objects.create(
                     actividad=act,
                     archivo=archivo,
+                    etapa='PROBLEMA',
+                    tipo_archivo='Evidencia Problema (Inicial)',
                     autor=func_actual,
-                    observacion=form.cleaned_data.get('observacion_evidencia') or 'Evidencia inicial'
+                    observacion=obs_ev
                 )
+                act.etapa_seguimiento = 2
+                act.fecha_etapa_2 = timezone.localdate()
+                act.obs_etapa_2 = obs_ev
+                act.save()
 
             BitacoraAuditoria.objects.create(
                 usuario=func_actual,
@@ -1211,7 +1792,7 @@ def actividades_list_view(request):
                 accion='Registro de Actividad',
                 detalle=f"Se registró la actividad {act.codigo} asociada a la meta {act.meta_asignada.meta.codigo}"
             )
-            messages.success(request, f"Actividad {act.codigo} registrada y enviada a revisión del Verificador.")
+            messages.success(request, f"Actividad {act.codigo} registrada correctamente. Puede continuar su avance en Seguimiento.")
             return redirect('actividades_list')
         else:
             messages.error(request, "Error al registrar la actividad. Verifique los campos y el archivo adjunto.")
@@ -1225,8 +1806,10 @@ def actividades_list_view(request):
             )
 
     estado_filtro = request.GET.get('estado', '')
+    q = request.GET.get('q', '').strip()
     actividades = Actividad.objects.select_related(
-        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio', 'verificado_por'
+        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio',
+        'verificado_por', 'vecino_solicitante', 'junta_solicitante'
     ).prefetch_related('evidencias').order_by('-id')
 
     if es_solo_funcionario:
@@ -1236,6 +1819,15 @@ def actividades_list_view(request):
 
     if estado_filtro:
         actividades = actividades.filter(estado_verificacion=estado_filtro)
+    if q:
+        actividades = actividades.filter(
+            Q(codigo__icontains=q) |
+            Q(tipo_actividad__icontains=q) |
+            Q(descripcion__icontains=q) |
+            Q(solicitante_nombre__icontains=q) |
+            Q(solicitante_rut__icontains=q) |
+            Q(junta_solicitante__nombre__icontains=q)
+        )
 
     vecinos_qs = Vecino.objects.filter(activo=True).select_related('territorio').order_by('rut')
     vecinos_datos = [
@@ -1244,9 +1836,22 @@ def actividades_list_view(request):
             'rut': v.rut,
             'nombre': v.nombre_completo,
             'telefono': v.telefono or '',
+            'direccion': v.direccion or '',
             'territorio_id': v.territorio_id or '',
         }
         for v in vecinos_qs
+    ]
+
+    juntas_qs = JuntaVecinos.objects.filter(activa=True).select_related('territorio').order_by('nombre')
+    juntas_datos = [
+        {
+            'id': j.id,
+            'codigo': j.codigo,
+            'nombre': j.nombre,
+            'direccion': j.direccion or '',
+            'territorio_id': j.territorio_id or '',
+        }
+        for j in juntas_qs
     ]
 
     return render(request, 'actividades_list.html', {
@@ -1255,8 +1860,69 @@ def actividades_list_view(request):
         'actividades': actividades,
         'estados_verificacion': Actividad.ESTADOS_VERIFICACION,
         'estado_filtro': estado_filtro,
+        'q': q,
         'vecinos_datos': vecinos_datos,
+        'juntas_datos': juntas_datos,
         'territorios_modal': Territorio.objects.filter(activo=True).order_by('nombre'),
+    })
+
+
+@roles_requeridos('ADMIN', 'DELEGADO', 'FUNCIONARIO')
+def actividad_editar_view(request, pk):
+    act = get_object_or_404(Actividad.objects.select_related('funcionario_autor', 'meta_asignada'), pk=pk)
+    func_actual = getattr(request.user, 'funcionario', None) or Funcionario.objects.first()
+    es_admin = request.user.is_superuser or (func_actual and func_actual.es_admin)
+    es_delegado = bool(func_actual and func_actual.es_delegado)
+    es_solo_funcionario = bool(func_actual and func_actual.es_solo_funcionario)
+
+    if act.bloqueada_edicion:
+        messages.error(request, f"La actividad {act.codigo} ya fue aprobada y está bloqueada contra ediciones.")
+        return redirect('actividades_list')
+
+    if es_solo_funcionario and act.funcionario_autor != func_actual:
+        messages.error(request, "No puede editar actividades registradas por otro funcionario.")
+        return redirect('actividades_list')
+
+    if es_delegado and not es_admin and func_actual and act.funcionario_autor.delegacion != func_actual.delegacion:
+        messages.error(request, "No puede editar actividades de otra delegación.")
+        return redirect('actividades_list')
+
+    if request.method == 'POST':
+        form = ActividadEditarForm(request.POST, instance=act)
+        if es_solo_funcionario:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                Q(funcionario=func_actual, activa=True) | Q(pk=act.meta_asignada_id)
+            )
+        elif es_delegado and not es_admin and func_actual:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                Q(funcionario__delegacion=func_actual.delegacion, activa=True) | Q(pk=act.meta_asignada_id)
+            )
+
+        if form.is_valid():
+            act_editada = form.save()
+            BitacoraAuditoria.objects.create(
+                usuario=func_actual,
+                modulo='Actividades',
+                accion='Edición de Actividad',
+                detalle=f"Se editó la actividad {act_editada.codigo} ({act_editada.tipo_actividad})."
+            )
+            messages.success(request, f"Actividad {act_editada.codigo} actualizada correctamente.")
+            return redirect('actividades_list')
+    else:
+        form = ActividadEditarForm(instance=act)
+        if es_solo_funcionario:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                Q(funcionario=func_actual, activa=True) | Q(pk=act.meta_asignada_id)
+            )
+        elif es_delegado and not es_admin and func_actual:
+            form.fields['meta_asignada'].queryset = AsignacionMeta.objects.filter(
+                Q(funcionario__delegacion=func_actual.delegacion, activa=True) | Q(pk=act.meta_asignada_id)
+            )
+
+    return render(request, 'crud/form_base.html', {
+        'form': form,
+        'titulo': f"Editar Actividad · {act.codigo}",
+        'url_cancelar': 'actividades_list',
     })
 
 
@@ -1268,6 +1934,7 @@ def vecino_registro_rapido_view(request):
     nombre_completo = request.POST.get('nombre_completo', '').strip()
     rut = request.POST.get('rut', '').strip()
     telefono = request.POST.get('telefono', '').strip()
+    direccion = request.POST.get('direccion', '').strip()
     territorio_id = request.POST.get('territorio_id', '').strip()
 
     if not nombre_completo:
@@ -1276,6 +1943,8 @@ def vecino_registro_rapido_view(request):
         return JsonResponse({'ok': False, 'error': 'Debe ingresar el RUT del vecino.'})
     if not telefono:
         return JsonResponse({'ok': False, 'error': 'Debe ingresar el número de teléfono del vecino.'})
+    if not direccion:
+        return JsonResponse({'ok': False, 'error': 'Debe ingresar la dirección obligatoria del vecino.'})
 
     rut_norm = ''.join(c for c in rut.upper() if c.isalnum())
     if len(rut_norm) < 7:
@@ -1306,7 +1975,7 @@ def vecino_registro_rapido_view(request):
         apellidos=apellidos,
         telefono=telefono,
         correo='',
-        direccion='',
+        direccion=direccion,
         territorio=territorio,
         activo=True,
     )
@@ -1316,7 +1985,7 @@ def vecino_registro_rapido_view(request):
         usuario=func_actual,
         modulo='Vecinos',
         accion='Registro Rápido de Vecino',
-        detalle=f"Se registró al vecino {vecino.nombre_completo} (RUT: {vecino.rut}) desde el formulario de actividades."
+        detalle=f"Se registró al vecino {vecino.nombre_completo} (RUT: {vecino.rut}, Dir: {vecino.direccion}) desde el formulario de actividades."
     )
 
     return JsonResponse({
@@ -1326,6 +1995,7 @@ def vecino_registro_rapido_view(request):
             'rut': vecino.rut,
             'nombre': vecino.nombre_completo,
             'telefono': vecino.telefono or '',
+            'direccion': vecino.direccion or '',
             'territorio_id': vecino.territorio_id or '',
         }
     })
@@ -1353,15 +2023,26 @@ def adjuntar_evidencia_view(request, pk):
             ev.autor = func_actual
             ev.save()
 
+            if ev.etapa == 'PROBLEMA' and act.etapa_seguimiento < 2:
+                act.etapa_seguimiento = 2
+                act.fecha_etapa_2 = timezone.localdate()
+                if ev.observacion:
+                    act.obs_etapa_2 = ev.observacion
+            elif ev.etapa == 'TERMINADO' and act.etapa_seguimiento < 4:
+                act.etapa_seguimiento = 4
+                act.fecha_etapa_4 = timezone.localdate()
+                if ev.observacion:
+                    act.obs_etapa_4 = ev.observacion
+
             if act.estado_verificacion in ['SOLICITUD_ANTECEDENTES', 'RECHAZADA']:
                 act.estado_verificacion = 'PENDIENTE'
-                act.save()
+            act.save()
 
             BitacoraAuditoria.objects.create(
                 usuario=func_actual,
                 modulo='Evidencias',
                 accion='Carga de Evidencia',
-                detalle=f"Se adjuntó evidencia {ev.codigo} a la actividad {act.codigo}"
+                detalle=f"Se adjuntó evidencia {ev.codigo} ({ev.get_etapa_display()}) a la actividad {act.codigo}"
             )
             messages.success(request, f"Evidencia {ev.codigo} adjuntada correctamente a la actividad {act.codigo}.")
         else:
@@ -1375,7 +2056,8 @@ def bandeja_verificacion_view(request):
     funcionario_filtro = request.GET.get('funcionario', '')
 
     actividades = Actividad.objects.select_related(
-        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio', 'verificado_por'
+        'funcionario_autor', 'meta_asignada__meta', 'hito', 'territorio',
+        'verificado_por', 'junta_solicitante'
     ).prefetch_related('evidencias').order_by('-fecha_registro')
 
     if estado_filtro and estado_filtro != 'TODOS':
@@ -1429,8 +2111,11 @@ def dictaminar_actividad_view(request, pk):
         cierre_msg = ""
         if decision == 'APROBADA_PONDERA':
             act.estado_tubo = 'CERRADO'
-            act.fecha_cierre = timezone.now().date()
-            cierre_msg = " Actividad cerrada automáticamente."
+            act.fecha_cierre = timezone.localdate()
+            act.etapa_seguimiento = 5
+            act.fecha_etapa_5 = timezone.localdate()
+            act.obs_etapa_5 = observacion or 'Aprobada y cerrada desde Bandeja de Verificación'
+            cierre_msg = " Actividad cerrada automáticamente (Etapa 5 completada)."
 
         act.save()
 
@@ -1811,7 +2496,7 @@ def exportar_reporte_csv(request):
                 gs.get_estado_display(),
             ])
     else:
-        writer.writerow(['Codigo', 'Fecha', 'Tipo', 'Solicitante', 'RUT', 'Territorio', 'Responsable', 'Estado Tubo', 'Verificacion'])
+        writer.writerow(['Codigo', 'Fecha', 'Tipo', 'Solicitante', 'RUT', 'Territorio', 'Responsable', 'Etapa Seguimiento', 'Estado Tubo', 'Verificacion'])
         qs = Actividad.objects.select_related('territorio', 'responsable_tubo').order_by('-id')
         if not es_admin_o_verif and func_actual:
             qs = qs.filter(territorio__delegacion=func_actual.delegacion)
@@ -1824,6 +2509,7 @@ def exportar_reporte_csv(request):
                 a.solicitante_rut,
                 a.territorio.nombre,
                 a.responsable_tubo.nombre_completo,
+                a.get_etapa_seguimiento_display(),
                 a.get_estado_tubo_display(),
                 a.get_estado_verificacion_display(),
             ])

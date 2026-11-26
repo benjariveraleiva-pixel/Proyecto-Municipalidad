@@ -159,7 +159,7 @@ class Funcionario(models.Model):
     @property
     def etiqueta_roles(self):
         if self.user.is_superuser and not self.roles.exists():
-            return "Administrador"
+            return "Desarrollador / Admin"
         nombres = [r.get_nombre_display() for r in self.roles.filter(activo=True)]
         return " · ".join(nombres) if nombres else "Sin Rol"
 
@@ -168,7 +168,7 @@ class Funcionario(models.Model):
 
 
 # ==============================================================================
-# 2. VECINOS, JUNTAS DE VECINOS E HITOS (REQUERIMIENTOS NUEVOS)
+# 2. VECINOS, JUNTAS DE VECINOS E HITOS
 # ==============================================================================
 
 class Vecino(models.Model):
@@ -177,7 +177,7 @@ class Vecino(models.Model):
     apellidos = models.CharField(max_length=120)
     telefono = models.CharField(max_length=30)
     correo = models.EmailField(blank=True, null=True)
-    direccion = models.CharField(max_length=200, blank=True, null=True)
+    direccion = models.CharField(max_length=200, default='')
     territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, related_name='vecinos')
     activo = models.BooleanField(default=True)
 
@@ -257,7 +257,7 @@ class Hito(models.Model):
 
 
 # ==============================================================================
-# 3. TRIMESTRES, METAS Y ASIGNACIÓN INDIVIDUAL (CON VALIDACIONES DE LA PROFE)
+# 3. TRIMESTRES, METAS Y ASIGNACIÓN INDIVIDUAL
 # ==============================================================================
 
 class Trimestre(models.Model):
@@ -334,15 +334,12 @@ class AsignacionMeta(models.Model):
         unique_together = ('funcionario', 'meta', 'trimestre')
 
     def clean(self):
-        # Validación 1 de la profesora: Que se registre la meta cuantitativa (> 0)
         if not self.cantidad_objetivo or self.cantidad_objetivo <= 0:
             raise ValidationError("Debe registrar una meta cuantitativa (cantidad objetivo) mayor a 0.")
 
-        # Validación 2 de la profesora: Que la meta pertenezca a un trimestre válido/abierto
         if self.trimestre_id and self.trimestre.estado == 'CERRADO':
             raise ValidationError(f"El trimestre {self.trimestre} está cerrado y no admite nuevas asignaciones ni modificaciones.")
 
-        # Validación 3 de la profesora: Que la sumatoria de ponderaciones no supere el 100%
         if self.funcionario_id and self.trimestre_id and self.activa:
             otras_ponderaciones = AsignacionMeta.objects.filter(
                 funcionario=self.funcionario,
@@ -371,8 +368,11 @@ class AsignacionMeta(models.Model):
 
     @property
     def porcentaje_cumplimiento_aplicable(self):
-        # Regla municipal: Tope máximo de 120% por meta
         return min(self.porcentaje_cumplimiento_real, 120.0)
+
+    @property
+    def porcentaje_faltante(self):
+        return max(round(100.0 - self.porcentaje_cumplimiento_real, 1), 0.0)
 
     @property
     def resultado_ponderado(self):
@@ -383,7 +383,7 @@ class AsignacionMeta(models.Model):
 
 
 # ==============================================================================
-# 4. ACTIVIDADES, TUBO DE GESTIÓN Y VERIFICACIÓN
+# 4. ACTIVIDADES, SEGUIMIENTO (5 ETAPAS), TUBO DE GESTIÓN Y VERIFICACIÓN
 # ==============================================================================
 
 class TipoAtencion(models.Model):
@@ -426,6 +426,11 @@ class Actividad(models.Model):
         ('EXTERNO', 'Vecino / Comunidad (Externo)'),
         ('TERRENO', 'Levantamiento en Terreno'),
     ]
+    TIPOS_SOLICITANTE = [
+        ('VECINO', 'Vecino Particular'),
+        ('JUNTA', 'Junta de Vecinos (JJVV)'),
+        ('OTRO', 'Otro / Interno'),
+    ]
     ESTADOS_VERIFICACION = [
         ('PENDIENTE', 'Pendiente de Revisión'),
         ('APROBADA_PONDERA', 'Aprobada y Pondera'),
@@ -442,6 +447,13 @@ class Actividad(models.Model):
         ('NO_APLICA', 'No Aplica'),
         ('VENCIDO', 'Vencido'),
     ]
+    ETAPAS_SEGUIMIENTO = [
+        (1, '1. Entrada / Solicitud'),
+        (2, '2. Evidencia del Problema'),
+        (3, '3. Proceso / Asignación Reparación'),
+        (4, '4. Evidencia Terminada'),
+        (5, '5. Salida / Finalizado'),
+    ]
 
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     fecha_registro = models.DateTimeField(auto_now_add=True)
@@ -453,14 +465,30 @@ class Actividad(models.Model):
     descripcion = models.TextField()
     origen = models.CharField(max_length=20, choices=ORIGENES, default='EXTERNO')
 
-    # Solicitante (Vecino o Nombre de Contacto/Organización)
+    # Solicitante separado: Vecino Particular o Junta de Vecinos (JJVV)
+    tipo_solicitante = models.CharField(max_length=20, choices=TIPOS_SOLICITANTE, default='VECINO')
     vecino_solicitante = models.ForeignKey(Vecino, on_delete=models.SET_NULL, null=True, blank=True)
+    junta_solicitante = models.ForeignKey(
+        JuntaVecinos, on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades_solicitadas'
+    )
     solicitante_nombre = models.CharField(max_length=150)
     solicitante_rut = models.CharField(max_length=20, blank=True)
     solicitante_telefono = models.CharField(max_length=30, blank=True)
     territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, related_name='actividades')
 
-    # Campos del Tubo de Gestión (Sin duplicar entidad, como exige la Municipalidad)
+    # Seguimiento de 5 Etapas (Entrada -> Evidencia Problema -> Proceso -> Evidencia Terminada -> Salida)
+    etapa_seguimiento = models.PositiveSmallIntegerField(choices=ETAPAS_SEGUIMIENTO, default=1)
+    fecha_etapa_2 = models.DateField(null=True, blank=True, help_text="Fecha de verificación del problema en terreno")
+    obs_etapa_2 = models.TextField(blank=True, help_text="Observación al verificar el problema")
+    fecha_etapa_3 = models.DateField(null=True, blank=True, help_text="Fecha de asignación a unidad/empresa reparadora")
+    entidad_reparacion = models.CharField(max_length=150, blank=True, help_text="Ej: Empresa Eléctrica / Operaciones / DISERCO")
+    obs_etapa_3 = models.TextField(blank=True, help_text="Detalle del proceso o derivación")
+    fecha_etapa_4 = models.DateField(null=True, blank=True, help_text="Fecha de verificación de trabajo terminado")
+    obs_etapa_4 = models.TextField(blank=True, help_text="Observación de término en terreno")
+    fecha_etapa_5 = models.DateField(null=True, blank=True, help_text="Fecha de cierre final y salida")
+    obs_etapa_5 = models.TextField(blank=True, help_text="Observación de cierre definitivo")
+
+    # Campos del Tubo de Gestión
     ingresa_al_tubo = models.BooleanField(default=False)
     responsable_tubo = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='compromisos_tubo')
     area_apoyo = models.CharField(max_length=120, blank=True, help_text="Ej: DISERCO, Tránsito, Alumbrado Público")
@@ -483,6 +511,14 @@ class Actividad(models.Model):
             secuencia = (ultimo.id + 1) if ultimo else 1
             self.codigo = f"AC-{secuencia:04d}"
 
+        if self.junta_solicitante and not self.solicitante_nombre:
+            self.solicitante_nombre = self.junta_solicitante.nombre
+
+        if self.estado_verificacion == 'APROBADA_PONDERA' and self.etapa_seguimiento < 5:
+            self.etapa_seguimiento = 5
+            if not self.fecha_etapa_5:
+                self.fecha_etapa_5 = timezone.localdate()
+
         # Cálculo automático de estado VENCIDO en el Tubo
         if self.ingresa_al_tubo and self.fecha_compromiso:
             hoy = timezone.now().date()
@@ -493,6 +529,24 @@ class Actividad(models.Model):
     @property
     def bloqueada_edicion(self):
         return self.estado_verificacion in ['APROBADA_PONDERA', 'APROBADA_NO_PONDERA']
+
+    @property
+    def porcentaje_avance_seguimiento(self):
+        return int((self.etapa_seguimiento / 5) * 100)
+
+    @property
+    def aporte_meta_porcentaje(self):
+        if self.meta_asignada_id and self.meta_asignada.cantidad_objetivo > 0:
+            return round(100.0 / self.meta_asignada.cantidad_objetivo, 1)
+        return 0.0
+
+    @property
+    def evidencias_problema(self):
+        return self.evidencias.filter(etapa='PROBLEMA')
+
+    @property
+    def evidencias_terminadas(self):
+        return self.evidencias.filter(etapa='TERMINADO')
 
     def __str__(self):
         return f"{self.codigo} - {self.descripcion[:50]}"
@@ -539,9 +593,15 @@ class TuboCarta(models.Model):
 
 
 class Evidencia(models.Model):
+    ETAPAS_EVIDENCIA = [
+        ('PROBLEMA', 'Evidencia del Problema (Antes)'),
+        ('TERMINADO', 'Evidencia Terminada (Después)'),
+        ('GENERAL', 'Respaldo General'),
+    ]
     codigo = models.CharField(max_length=30, unique=True, editable=False)
     actividad = models.ForeignKey(Actividad, on_delete=models.CASCADE, related_name='evidencias')
     archivo = models.FileField(upload_to='evidencias/%Y/%m/')
+    etapa = models.CharField(max_length=20, choices=ETAPAS_EVIDENCIA, default='PROBLEMA')
     tipo_archivo = models.CharField(max_length=40, default='Fotografía / Documento')
     autor = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='evidencias_subidas')
     fecha_carga = models.DateTimeField(auto_now_add=True)
@@ -586,6 +646,7 @@ class BitacoraAuditoria(models.Model):
     def __str__(self):
         return f"[{self.fecha_hora.strftime('%d/%m/%Y %H:%M')}] {self.modulo}: {self.accion}"
 
+
 # ==============================================================================
 # 6. MÓDULO DE GESTIONES SOCIALES (LAS 3 ETAPAS)
 # ==============================================================================
@@ -598,7 +659,7 @@ class GestionSocial(models.Model):
         ('BENEFICIO_ENTREGADO', 'Beneficio Entregado'),
         ('RECHAZADA', 'Rechazada / No Califica'),
     ]
-    
+
     codigo = models.CharField(max_length=20, unique=True, editable=False)
     fecha_ingreso = models.DateField(default=timezone.now)
     vecino = models.ForeignKey(Vecino, on_delete=models.CASCADE, related_name='gestiones_sociales')
@@ -606,7 +667,6 @@ class GestionSocial(models.Model):
     asistente_social = models.ForeignKey(Funcionario, on_delete=models.PROTECT, related_name='casos_sociales')
     requerimiento = models.TextField(help_text="Problema o solicitud inicial del vecino")
 
-    # Las 3 Etapas Críticas
     fecha_visita = models.DateField(null=True, blank=True, help_text="Etapa 1: Visita Domiciliaria")
     fecha_informe = models.DateField(null=True, blank=True, help_text="Etapa 2: Informe Social Emitido")
     fecha_beneficio = models.DateField(null=True, blank=True, help_text="Etapa 3: Beneficio Entregado")
@@ -615,13 +675,11 @@ class GestionSocial(models.Model):
     observaciones = models.TextField(blank=True)
 
     def save(self, *args, **kwargs):
-        # Generar código automático
         if not self.codigo:
             ultimo = GestionSocial.objects.order_by('-id').first()
             secuencia = (ultimo.id + 1) if ultimo else 1
             self.codigo = f"GS-{secuencia:04d}"
 
-        # Actualizar estado automáticamente según las fechas ingresadas
         if self.estado != 'RECHAZADA':
             if self.fecha_beneficio:
                 self.estado = 'BENEFICIO_ENTREGADO'
@@ -636,7 +694,6 @@ class GestionSocial(models.Model):
 
     @property
     def dias_demora(self):
-        """Calcula los días transcurridos desde el ingreso hasta la entrega del beneficio (o hasta hoy si sigue abierto)."""
         if self.fecha_ingreso:
             fecha_fin = self.fecha_beneficio if self.fecha_beneficio else timezone.now().date()
             demora = (fecha_fin - self.fecha_ingreso).days

@@ -1,0 +1,375 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .timeline-5 {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        position: relative;
+        margin: 10px 0 8px 0;
+    }
+    .timeline-node {
+        position: relative;
+        background: #f8f9fa;
+        border: 2px solid #e9ecef;
+        border-radius: 14px;
+        padding: 16px 12px;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+    .timeline-node.done {
+        background: #f0fdf4;
+        border-color: #16a34a;
+    }
+    .timeline-node.current {
+        background: #fff5f6;
+        border-color: var(--muni-crimson);
+        box-shadow: 0 8px 20px rgba(158, 27, 42, 0.14);
+    }
+    .timeline-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin: 0 auto 10px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1rem;
+        background: #dee2e6;
+        color: #495057;
+    }
+    .timeline-node.done .timeline-circle {
+        background: #16a34a;
+        color: #ffffff;
+    }
+    .timeline-node.current .timeline-circle {
+        background: var(--muni-crimson);
+        color: #ffffff;
+    }
+    @media (max-width: 992px) {
+        .timeline-5 { grid-template-columns: 1fr; }
+    }
+</style>
+
+<!-- Cabecera -->
+<div class="muni-card mb-4 animate-fade-up">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 pb-3 mb-3 border-bottom">
+        <div>
+            <span class="badge bg-dark mb-1">{{ actividad.codigo }}</span>
+            {% if actividad.tipo_solicitante == 'JUNTA' or actividad.junta_solicitante %}
+                <span class="badge bg-danger mb-1"><i class="bi bi-houses-fill me-1"></i>Junta de Vecinos</span>
+            {% else %}
+                <span class="badge bg-secondary mb-1"><i class="bi bi-person-fill me-1"></i>Vecino Particular</span>
+            {% endif %}
+            <h4 class="fw-bold mb-0" style="color: var(--muni-granate);">{{ actividad.tipo_actividad }}</h4>
+            <small class="text-muted">{{ actividad.descripcion }}</small>
+        </div>
+        <div class="d-flex gap-2">
+            {% if not actividad.bloqueada_edicion and puede_avanzar_operativo %}
+                <a href="{% url 'actividad_editar' actividad.id %}" class="btn btn-sm btn-outline-secondary d-flex align-items-center">
+                    <i class="bi bi-pencil-square me-1"></i>Editar Datos
+                </a>
+            {% endif %}
+            <a href="{% url 'seguimiento_list' %}" class="btn-muni-outline text-decoration-none">
+                <i class="bi bi-arrow-left me-1"></i>Volver a Seguimiento
+            </a>
+        </div>
+    </div>
+
+    <!-- Datos clave + Impacto en Meta (Tengo X% / Falta Y%) -->
+    <div class="row g-3">
+        <div class="col-md-7">
+            <div class="p-3 rounded-3 bg-light border h-100">
+                <div class="row g-2 small">
+                    <div class="col-sm-6">
+                        <span class="text-muted d-block">Solicitante</span>
+                        <strong>{{ actividad.junta_solicitante.nombre|default:actividad.solicitante_nombre }}</strong>
+                        {% if actividad.solicitante_rut %}<div class="text-muted">RUT: {{ actividad.solicitante_rut }}</div>{% endif %}
+                        {% if actividad.vecino_solicitante and actividad.vecino_solicitante.direccion %}
+                            <div class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ actividad.vecino_solicitante.direccion }}</div>
+                        {% elif actividad.junta_solicitante %}
+                            <div class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ actividad.junta_solicitante.direccion }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-sm-6">
+                        <span class="text-muted d-block">Funcionario y Territorio</span>
+                        <strong>{{ actividad.funcionario_autor.nombre_completo }}</strong>
+                        <div class="text-muted">{{ actividad.territorio.nombre }} · {{ actividad.territorio.delegacion.nombre }}</div>
+                        {% if actividad.entidad_reparacion %}
+                            <div class="mt-1"><span class="badge bg-primary">Asignado a: {{ actividad.entidad_reparacion }}</span></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-5">
+            <div class="p-3 rounded-3 border h-100" style="background: #fff5f6; border-color: rgba(158, 27, 42, 0.25) !important;">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <small class="fw-bold" style="color: var(--muni-granate);">Aporte a Meta: {{ actividad.meta_asignada.meta.codigo }}</small>
+                    <span class="badge bg-danger">Cada tarea = {{ actividad.aporte_meta_porcentaje }}%</span>
+                </div>
+                <div class="small text-muted mb-2">
+                    {{ actividad.meta_asignada.meta.nombre }} ({{ actividad.meta_asignada.actividades_aprobadas_count }}/{{ actividad.meta_asignada.cantidad_objetivo }} completadas)
+                </div>
+                <div class="progress-muni mb-2">
+                    <div class="progress-bar-granate" style="width: {{ actividad.meta_asignada.porcentaje_cumplimiento_aplicable }}%;"></div>
+                </div>
+                <div class="d-flex justify-content-between small fw-bold">
+                    <span class="text-success">Tengo: {{ actividad.meta_asignada.porcentaje_cumplimiento_real }}%</span>
+                    <span class="text-danger">Falta: {{ actividad.meta_asignada.porcentaje_faltante }}%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Línea de Tiempo Horizontal de las 5 Etapas -->
+<div class="muni-card mb-4 animate-fade-up delay-1">
+    <h6 class="fw-bold mb-3" style="color: var(--muni-granate);">
+        <i class="bi bi-signpost-split-fill me-2"></i>Línea de Tiempo de la Solicitud (Entrada → Proceso → Salida)
+    </h6>
+
+    <div class="timeline-5">
+        <!-- Etapa 1 -->
+        <div class="timeline-node {% if actividad.etapa_seguimiento > 1 or actividad.etapa_seguimiento == 5 %}done{% else %}current{% endif %}">
+            <div class="timeline-circle">{% if actividad.etapa_seguimiento > 1 %}✓{% else %}1{% endif %}</div>
+            <div class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem;">Entrada</div>
+            <div class="fw-bold small mb-1">Solicitud (Inicio)</div>
+            <div class="badge bg-light text-dark border mb-2">{{ actividad.fecha_actividad|date:"d-m-Y" }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">Ingreso de requerimiento: {{ actividad.tipo_actividad }}</div>
+        </div>
+
+        <!-- Etapa 2 -->
+        <div class="timeline-node {% if actividad.etapa_seguimiento > 2 or actividad.etapa_seguimiento == 5 %}done{% elif actividad.etapa_seguimiento == 2 %}current{% endif %}">
+            <div class="timeline-circle">{% if actividad.etapa_seguimiento > 2 %}✓{% else %}2{% endif %}</div>
+            <div class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem;">Evidencia Problema</div>
+            <div class="fw-bold small mb-1">Verifica Terreno</div>
+            <div class="badge bg-light text-dark border mb-2">{{ actividad.fecha_etapa_2|date:"d-m-Y"|default:"Pendiente" }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">{{ actividad.obs_etapa_2|default:"Verificar en terreno y subir evidencia del problema" }}</div>
+        </div>
+
+        <!-- Etapa 3 -->
+        <div class="timeline-node {% if actividad.etapa_seguimiento > 3 or actividad.etapa_seguimiento == 5 %}done{% elif actividad.etapa_seguimiento == 3 %}current{% endif %}">
+            <div class="timeline-circle">{% if actividad.etapa_seguimiento > 3 %}✓{% else %}3{% endif %}</div>
+            <div class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem;">Proceso</div>
+            <div class="fw-bold small mb-1">Asigna Reparación</div>
+            <div class="badge bg-light text-dark border mb-2">{{ actividad.fecha_etapa_3|date:"d-m-Y"|default:"Pendiente" }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">
+                {% if actividad.entidad_reparacion %}
+                    <strong>{{ actividad.entidad_reparacion }}</strong><br>{{ actividad.obs_etapa_3 }}
+                {% else %}
+                    Derivar a unidad o empresa reparadora
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Etapa 4 -->
+        <div class="timeline-node {% if actividad.etapa_seguimiento > 4 or actividad.etapa_seguimiento == 5 %}done{% elif actividad.etapa_seguimiento == 4 %}current{% endif %}">
+            <div class="timeline-circle">{% if actividad.etapa_seguimiento > 4 %}✓{% else %}4{% endif %}</div>
+            <div class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem;">Evidencia Terminada</div>
+            <div class="fw-bold small mb-1">Verifica Término</div>
+            <div class="badge bg-light text-dark border mb-2">{{ actividad.fecha_etapa_4|date:"d-m-Y"|default:"Pendiente" }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">{{ actividad.obs_etapa_4|default:"Verificar reparación en terreno y subir evidencia final" }}</div>
+        </div>
+
+        <!-- Etapa 5 -->
+        <div class="timeline-node {% if actividad.etapa_seguimiento == 5 %}done{% endif %}">
+            <div class="timeline-circle">{% if actividad.etapa_seguimiento == 5 %}✓{% else %}5{% endif %}</div>
+            <div class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem;">Salida</div>
+            <div class="fw-bold small mb-1">Finalizar / Cierre</div>
+            <div class="badge bg-light text-dark border mb-2">{{ actividad.fecha_etapa_5|date:"d-m-Y"|default:"Pendiente" }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">
+                {% if actividad.etapa_seguimiento == 5 %}
+                    Cierre aprobado · Suma {{ actividad.aporte_meta_porcentaje }}% a la meta
+                {% else %}
+                    Aprobación final por Verificador para sumar a la meta
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Panel de Acción según la Etapa Actual -->
+    <div class="col-lg-6">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3" style="color: var(--muni-granate);">
+                <i class="bi bi-play-circle-fill me-2"></i>Siguiente Paso del Seguimiento
+            </h6>
+
+            {% if actividad.etapa_seguimiento == 5 and actividad.estado_verificacion == 'APROBADA_PONDERA' %}
+                <div class="alert alert-success border-0 mb-0">
+                    <div class="fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Solicitud Finalizada y Ponderada</div>
+                    <div class="small mt-1">
+                        Cerrada el {{ actividad.fecha_etapa_5|date:"d/m/Y" }} por {{ actividad.verificado_por.nombre_completo|default:"Verificador" }}.
+                        {% if actividad.obs_etapa_5 %}<br><strong>Observación:</strong> {{ actividad.obs_etapa_5 }}{% endif %}
+                    </div>
+                </div>
+
+            {% elif actividad.etapa_seguimiento == 1 %}
+                {% if puede_avanzar_operativo %}
+                    <form method="post" action="{% url 'seguimiento_avanzar' actividad.id %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="etapa_2">
+                        <div class="alert alert-light border small mb-3">
+                            <strong>Etapa 2 · Evidencia del Problema:</strong> El funcionario verifica en terreno y sube la evidencia inicial del problema.
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Fecha de Verificación en Terreno</label>
+                            <input type="date" name="fecha_etapa" value="{{ hoy_iso }}" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Evidencia del Problema (Foto o PDF) <span class="text-danger">*</span></label>
+                            <input type="file" name="archivo" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Observación en Terreno</label>
+                            <textarea name="observacion" rows="2" class="form-control form-control-sm" placeholder="Ej: Se verificó en terreno 3 luminarias apagadas en el pasaje..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-muni w-100 justify-content-center">
+                            <i class="bi bi-camera-fill me-1"></i>Registrar Evidencia del Problema (Avanzar a Etapa 2)
+                        </button>
+                    </form>
+                {% else %}
+                    <p class="text-muted small">Esperando que el funcionario responsable suba la evidencia del problema (Etapa 2).</p>
+                {% endif %}
+
+            {% elif actividad.etapa_seguimiento == 2 %}
+                {% if puede_avanzar_operativo %}
+                    <form method="post" action="{% url 'seguimiento_avanzar' actividad.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="etapa_3">
+                        <div class="alert alert-light border small mb-3">
+                            <strong>Etapa 3 · Proceso / Asignación de Reparación:</strong> Indique a qué empresa o unidad municipal se derivó el trabajo.
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Fecha de Derivación / Inicio de Proceso</label>
+                            <input type="date" name="fecha_etapa" value="{{ hoy_iso }}" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Empresa o Unidad Asignada <span class="text-danger">*</span></label>
+                            <input type="text" name="entidad_reparacion" value="{{ actividad.area_apoyo }}" class="form-control form-control-sm" placeholder="Ej: Empresa Eléctrica / Alumbrado Público / Operaciones" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Detalle del Proceso</label>
+                            <textarea name="observacion" rows="2" class="form-control form-control-sm" placeholder="Ej: Se generó orden de trabajo N° 4512 para reparación..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-muni w-100 justify-content-center">
+                            <i class="bi bi-tools me-1"></i>Asignar Reparación (Avanzar a Etapa 3)
+                        </button>
+                    </form>
+                {% else %}
+                    <p class="text-muted small">Esperando que el funcionario derive la reparación (Etapa 3).</p>
+                {% endif %}
+
+            {% elif actividad.etapa_seguimiento == 3 %}
+                {% if puede_avanzar_operativo %}
+                    <form method="post" action="{% url 'seguimiento_avanzar' actividad.id %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="etapa_4">
+                        <div class="alert alert-light border small mb-3">
+                            <strong>Etapa 4 · Evidencia Terminada:</strong> El funcionario vuelve a terreno, comprueba la reparación y sube la foto/documento del trabajo terminado.
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Fecha de Verificación de Término</label>
+                            <input type="date" name="fecha_etapa" value="{{ hoy_iso }}" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Evidencia de Trabajo Terminado (Foto o PDF) <span class="text-danger">*</span></label>
+                            <input type="file" name="archivo" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Observación de Término</label>
+                            <textarea name="observacion" rows="2" class="form-control form-control-sm" placeholder="Ej: Reparación completada, luminarias funcionando correctamente..."></textarea>
+                        </div>
+                        <button type="submit" class="btn-muni w-100 justify-content-center">
+                            <i class="bi bi-check2-square me-1"></i>Subir Evidencia Terminada (Avanzar a Etapa 4)
+                        </button>
+                    </form>
+                {% else %}
+                    <p class="text-muted small">Esperando que el funcionario verifique el término en terreno (Etapa 4).</p>
+                {% endif %}
+
+            {% elif actividad.etapa_seguimiento == 4 %}
+                {% if puede_cerrar_etapa_5 %}
+                    <form method="post" action="{% url 'seguimiento_avanzar' actividad.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="etapa_5">
+                        <div class="alert alert-info border-0 small mb-3">
+                            <strong>Etapa 5 · Salida / Cierre Definitivo:</strong> Al finalizar esta etapa, la solicitud quedará aprobada, cerrada y sumará <strong>{{ actividad.aporte_meta_porcentaje }}%</strong> a la meta del funcionario.
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Fecha de Cierre</label>
+                            <input type="date" name="fecha_etapa" value="{{ hoy_iso }}" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Observación de Cierre / Verificador</label>
+                            <textarea name="observacion" rows="2" class="form-control form-control-sm" placeholder="Ej: Evidencia antes y después conforme. Se cierra solicitud."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100 fw-bold">
+                            <i class="bi bi-patch-check-fill me-1"></i>Finalizar, Cerrar y Sumar a la Meta (Etapa 5)
+                        </button>
+                    </form>
+                {% else %}
+                    <div class="alert alert-warning border-0 small mb-0">
+                        <div class="fw-bold"><i class="bi bi-hourglass-split me-1"></i>Lista para Cierre (Esperando Verificador)</div>
+                        <div class="mt-1">Ya completaste hasta la Etapa 4 con la evidencia del trabajo terminado. Ahora el <strong>Verificador</strong> revisará las evidencias para aprobar el cierre final (Etapa 5) y sumar el porcentaje a tu meta.</div>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Comparativa de Evidencias Antes y Después -->
+    <div class="col-lg-6">
+        <div class="muni-card h-100">
+            <h6 class="fw-bold mb-3" style="color: var(--muni-granate);">
+                <i class="bi bi-images me-2"></i>Evidencias del Caso (Antes vs. Después)
+            </h6>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="p-3 rounded-3 border bg-light h-100">
+                        <div class="small fw-bold text-warning-emphasis mb-2">
+                            <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>Problema (Etapa 2)
+                        </div>
+                        {% for ev in evidencias_problema %}
+                            <div class="mb-2 p-2 bg-white rounded border">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="fw-semibold small text-decoration-none d-block" style="color: var(--muni-crimson);">
+                                    <i class="bi bi-file-earmark-arrow-down-fill me-1"></i>{{ ev.codigo }}
+                                </a>
+                                <small class="text-muted d-block" style="font-size: 0.72rem;">{{ ev.fecha_carga|date:"d/m/Y H:i" }}</small>
+                                {% if ev.observacion %}<small class="text-dark d-block" style="font-size: 0.74rem;">{{ ev.observacion }}</small>{% endif %}
+                            </div>
+                        {% empty %}
+                            <p class="small text-muted mb-0">Aún no se sube evidencia del problema.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="p-3 rounded-3 border bg-light h-100">
+                        <div class="small fw-bold text-success mb-2">
+                            <i class="bi bi-check-circle-fill text-success me-1"></i>Terminado (Etapa 4)
+                        </div>
+                        {% for ev in evidencias_terminadas %}
+                            <div class="mb-2 p-2 bg-white rounded border">
+                                <a href="{{ ev.archivo.url }}" target="_blank" class="fw-semibold small text-decoration-none d-block text-success">
+                                    <i class="bi bi-file-earmark-check-fill me-1"></i>{{ ev.codigo }}
+                                </a>
+                                <small class="text-muted d-block" style="font-size: 0.72rem;">{{ ev.fecha_carga|date:"d/m/Y H:i" }}</small>
+                                {% if ev.observacion %}<small class="text-dark d-block" style="font-size: 0.74rem;">{{ ev.observacion }}</small>{% endif %}
+                            </div>
+                        {% empty %}
+                            <p class="small text-muted mb-0">Aún no se sube evidencia de término.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

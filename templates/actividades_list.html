@@ -5,7 +5,7 @@
     <div class="d-flex justify-content-between align-items-center">
         <div>
             <h4 class="fw-bold mb-0" style="color: var(--muni-granate);"><i class="bi bi-list-check me-2"></i>Registro de Actividades y Evidencias</h4>
-            <small class="text-muted">Ingrese sus gestiones diarias, vincúlelas a su meta trimestral y adjunte el archivo de evidencia</small>
+            <small class="text-muted">Ingrese sus gestiones diarias, seleccione si proviene de un Vecino o una Junta de Vecinos y adjunte la evidencia</small>
         </div>
         <button class="btn-muni" data-bs-toggle="collapse" data-bs-target="#collapseNuevaActividad">
             <i class="bi bi-plus-circle-fill"></i> Registrar Nueva Actividad
@@ -33,14 +33,20 @@
             <div class="col-md-3"><label class="small fw-bold">Origen</label>{{ form.origen }}</div>
             <div class="col-md-5"><label class="small fw-bold">Territorio</label>{{ form.territorio }}</div>
 
-            <!-- Buscador + Desplegable en vivo por RUT + Botón Nuevo Vecino -->
-            <div class="col-md-4">
+            <!-- Selector de Tipo de Solicitante (Vecino vs Junta de Vecinos) -->
+            <div class="col-md-3">
+                <label class="small fw-bold" style="color: var(--muni-granate);">Tipo de Solicitante</label>
+                {{ form.tipo_solicitante }}
+            </div>
+
+            <!-- Bloque Vecino Particular (Buscador en vivo por RUT + Nuevo Vecino) -->
+            <div class="col-md-5" id="bloqueVecinoSolicitante">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <label class="small fw-bold mb-0">Vecino Registrado <span class="text-muted fw-normal">(Buscar por RUT)</span></label>
                     <button type="button" class="btn btn-sm py-0 px-2 text-white fw-semibold"
                             style="background: var(--muni-crimson); font-size: 0.72rem;"
                             data-bs-toggle="modal" data-bs-target="#modalNuevoVecino">
-                        <i class="bi bi-person-plus-fill me-1"></i>Nuevo
+                        <i class="bi bi-person-plus-fill me-1"></i>Nuevo Vecino
                     </button>
                 </div>
 
@@ -65,16 +71,27 @@
                 </div>
             </div>
 
-            <div class="col-md-3"><label class="small fw-bold">Nombre Solicitante / JJVV</label>{{ form.solicitante_nombre }}</div>
-            <div class="col-md-2"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
+            <!-- Bloque Junta de Vecinos (Separado de Vecino) -->
+            <div class="col-md-5 d-none" id="bloqueJuntaSolicitante">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="small fw-bold mb-0">Junta de Vecinos (JJVV) <span class="text-danger">*</span></label>
+                    <a href="{% url 'juntas_crear' %}" class="btn btn-sm py-0 px-2 btn-outline-danger fw-semibold" style="font-size: 0.72rem;">
+                        <i class="bi bi-houses-fill me-1"></i>Crear JJVV
+                    </a>
+                </div>
+                {{ form.junta_solicitante }}
+            </div>
+
+            <div class="col-md-4"><label class="small fw-bold">Nombre Solicitante / Contacto</label>{{ form.solicitante_nombre }}</div>
+            <div class="col-md-3" id="campoRutSolicitante"><label class="small fw-bold">RUT</label>{{ form.solicitante_rut }}</div>
             <div class="col-md-3"><label class="small fw-bold">Teléfono</label>{{ form.solicitante_telefono }}</div>
+            <div class="col-md-6"><label class="small fw-bold">Descripción de la Solicitud / Gestión</label>{{ form.descripcion }}</div>
 
-            <div class="col-md-12"><label class="small fw-bold">Descripción de la Gestión / Actividad Realizada</label>{{ form.descripcion }}</div>
-
-            <!-- Evidencia Inicial -->
+            <!-- Evidencia Inicial del Problema -->
             <div class="col-md-6 p-3 rounded bg-light border">
                 <label class="small fw-bold d-block mb-1" style="color: var(--muni-granate);"><i class="bi bi-paperclip me-1"></i>{{ form.archivo_evidencia.label }}</label>
                 {{ form.archivo_evidencia }}
+                <small class="text-muted" style="font-size: 0.73rem;">Si adjunta la foto del problema ahora, la solicitud avanzará automáticamente a la Etapa 2 del seguimiento.</small>
             </div>
             <div class="col-md-6 p-3 rounded bg-light border">
                 <label class="small fw-bold d-block mb-1">{{ form.observacion_evidencia.label }}</label>
@@ -89,11 +106,11 @@
                 </div>
             </div>
             <div class="col-md-3"><label class="small fw-bold">Responsable Seguimiento</label>{{ form.responsable_tubo }}</div>
-            <div class="col-md-3"><label class="small fw-bold">Área de Apoyo</label>{{ form.area_apoyo }}</div>
+            <div class="col-md-3"><label class="small fw-bold">Área de Apoyo / Empresa</label>{{ form.area_apoyo }}</div>
             <div class="col-md-3"><label class="small fw-bold">Fecha Compromiso</label>{{ form.fecha_compromiso }}</div>
 
             <div class="col-12 text-end">
-                <button type="submit" class="btn-muni"><i class="bi bi-send-check-fill"></i> Guardar y Enviar a Verificación</button>
+                <button type="submit" class="btn-muni"><i class="bi bi-send-check-fill"></i> Guardar Solicitud / Actividad</button>
             </div>
         </form>
     </div>
@@ -101,15 +118,17 @@
 
 <!-- Listado de Actividades y Carga de Evidencias -->
 <div class="muni-card animate-fade-up delay-1">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h6 class="fw-bold mb-0">Historial de Actividades y Estado de Revisión</h6>
-        <form method="get" class="d-flex gap-2">
-            <select name="estado" class="form-select form-select-sm" onchange="this.form.submit()">
+        <form method="get" class="d-flex flex-wrap gap-2">
+            <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" style="width: 220px;" placeholder="Buscar código, solicitante...">
+            <select name="estado" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
                 <option value="">Todos los estados de verificación</option>
                 {% for cod, label in estados_verificacion %}
                     <option value="{{ cod }}" {% if estado_filtro == cod %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i></button>
         </form>
     </div>
 
@@ -120,9 +139,9 @@
                     <th>Código / Fecha</th>
                     <th>Funcionario / Meta</th>
                     <th>Actividad y Solicitante</th>
-                    <th>Evidencias Adjuntas</th>
+                    <th>Seguimiento / Evidencias</th>
                     <th>Estado Verificación</th>
-                    <th>Subir / Complementar Evidencia</th>
+                    <th>Acciones / Subir Evidencia</th>
                 </tr>
             </thead>
             <tbody>
@@ -141,20 +160,34 @@
                                     <i class="bi bi-flag-fill text-danger me-1"></i>{{ act.hito.codigo }} · {{ act.hito.nombre }}
                                 </span>
                             </div>
-                        {% else %}
-                            <small class="d-block text-muted fst-italic">Sin hito asociado</small>
                         {% endif %}
                     </td>
                     <td>
                         <div class="fw-semibold">{{ act.tipo_actividad }}</div>
-                        <small class="d-block text-muted">{{ act.descripcion }}</small>
-                        <small class="text-secondary"><i class="bi bi-person me-1"></i>{{ act.solicitante_nombre }} ({{ act.territorio.nombre }})</small>
+                        <small class="d-block text-muted">{{ act.descripcion|truncatechars:100 }}</small>
+                        <div class="mt-1">
+                            {% if act.tipo_solicitante == 'JUNTA' or act.junta_solicitante %}
+                                <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25">
+                                    <i class="bi bi-houses-fill me-1"></i>JJVV: {{ act.junta_solicitante.nombre|default:act.solicitante_nombre }}
+                                </span>
+                            {% else %}
+                                <small class="text-secondary"><i class="bi bi-person me-1"></i>{{ act.solicitante_nombre }}</small>
+                            {% endif %}
+                            <small class="text-muted">({{ act.territorio.nombre }})</small>
+                        </div>
                     </td>
                     <td>
+                        <div class="mb-2">
+                            <span class="badge {% if act.etapa_seguimiento == 5 %}bg-success{% elif act.etapa_seguimiento >= 3 %}bg-primary{% else %}bg-secondary{% endif %}">
+                                Etapa {{ act.etapa_seguimiento }}/5
+                            </span>
+                            <small class="d-block text-muted" style="font-size: 0.72rem;">{{ act.get_etapa_seguimiento_display }}</small>
+                        </div>
                         {% for ev in act.evidencias.all %}
                             <div class="mb-1">
                                 <a href="{{ ev.archivo.url }}" target="_blank" class="badge bg-light text-dark border text-decoration-none">
                                     <i class="bi bi-file-earmark-arrow-down-fill text-danger me-1"></i>{{ ev.codigo }}
+                                    <span class="text-muted">({{ ev.etapa|lower }})</span>
                                 </a>
                             </div>
                         {% empty %}
@@ -178,12 +211,29 @@
                             <div class="small text-muted mt-1"><strong>Obs Verificador:</strong> {{ act.observacion_verificador }}</div>
                         {% endif %}
                     </td>
-                    <td>
+                    <td style="min-width: 220px;">
+                        <div class="d-flex gap-1 mb-2">
+                            <a href="{% url 'seguimiento_detalle' act.id %}" class="btn btn-sm btn-outline-danger py-0 px-2 fw-semibold">
+                                <i class="bi bi-diagram-3-fill me-1"></i>Seguimiento
+                            </a>
+                            {% if not act.bloqueada_edicion %}
+                                <a href="{% url 'actividad_editar' act.id %}" class="btn btn-sm btn-outline-secondary py-0 px-2">
+                                    <i class="bi bi-pencil-square me-1"></i>Editar
+                                </a>
+                            {% endif %}
+                        </div>
+
                         {% if act.bloqueada_edicion %}
                             <span class="text-muted small"><i class="bi bi-lock-fill"></i> Registro Aprobado y Bloqueado</span>
                         {% else %}
                             <form method="post" action="{% url 'adjuntar_evidencia' act.id %}" enctype="multipart/form-data" class="d-flex flex-column gap-1">
                                 {% csrf_token %}
+                                <input type="hidden" name="tipo_archivo" value="Fotografía / Documento">
+                                <select name="etapa" class="form-select form-select-sm">
+                                    <option value="PROBLEMA" {% if act.etapa_seguimiento < 3 %}selected{% endif %}>Evidencia Problema (Antes)</option>
+                                    <option value="TERMINADO" {% if act.etapa_seguimiento >= 3 %}selected{% endif %}>Evidencia Terminada (Después)</option>
+                                    <option value="GENERAL">Respaldo General</option>
+                                </select>
                                 <input type="file" name="archivo" class="form-control form-control-sm" required>
                                 <div class="d-flex gap-1">
                                     <input type="text" name="observacion" class="form-control form-control-sm" placeholder="Comentario...">
@@ -231,6 +281,11 @@
                         </div>
                     </div>
 
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Dirección <span class="text-danger">*</span></label>
+                        <input type="text" id="modalVecinoDireccion" class="form-control form-control-sm" placeholder="Ej: Pasaje Los Aromos 1240, Las Compañías" required>
+                    </div>
+
                     <div class="mb-1">
                         <label class="form-label small fw-bold">Territorio <span class="text-danger">*</span></label>
                         <select id="modalVecinoTerritorio" class="form-select form-select-sm" required>
@@ -254,12 +309,20 @@
 </div>
 
 {{ vecinos_datos|json_script:"vecinos-datos-json" }}
+{{ juntas_datos|json_script:"juntas-datos-json" }}
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     let vecinosLista = JSON.parse(document.getElementById('vecinos-datos-json').textContent);
+    const juntasLista = JSON.parse(document.getElementById('juntas-datos-json').textContent);
+
+    const selectTipoSolicitante = document.getElementById('id_tipo_solicitante');
+    const bloqueVecino = document.getElementById('bloqueVecinoSolicitante');
+    const bloqueJunta = document.getElementById('bloqueJuntaSolicitante');
+    const campoRutSolicitante = document.getElementById('campoRutSolicitante');
+    const selectJunta = document.getElementById('id_junta_solicitante');
 
     const selectVecinoReal = document.getElementById('id_vecino_solicitante');
     const inputBuscarRut = document.getElementById('buscadorVecinoRut');
@@ -279,8 +342,50 @@ document.addEventListener('DOMContentLoaded', function() {
     const modalNombre = document.getElementById('modalVecinoNombre');
     const modalRut = document.getElementById('modalVecinoRut');
     const modalTelefono = document.getElementById('modalVecinoTelefono');
+    const modalDireccion = document.getElementById('modalVecinoDireccion');
     const modalTerritorio = document.getElementById('modalVecinoTerritorio');
     const btnGuardarRapido = document.getElementById('btnGuardarVecinoRapido');
+
+    function actualizarModoSolicitante() {
+        const tipo = selectTipoSolicitante ? selectTipoSolicitante.value : 'VECINO';
+        if (tipo === 'JUNTA') {
+            bloqueVecino.classList.add('d-none');
+            bloqueJunta.classList.remove('d-none');
+            if (campoRutSolicitante) campoRutSolicitante.classList.add('d-none');
+            if (selectVecinoReal) selectVecinoReal.value = '';
+            if (inputBuscarRut) inputBuscarRut.value = '';
+            if (btnLimpiar) btnLimpiar.classList.add('d-none');
+        } else if (tipo === 'OTRO') {
+            bloqueVecino.classList.add('d-none');
+            bloqueJunta.classList.add('d-none');
+            if (campoRutSolicitante) campoRutSolicitante.classList.remove('d-none');
+            if (selectVecinoReal) selectVecinoReal.value = '';
+            if (selectJunta) selectJunta.value = '';
+        } else {
+            bloqueVecino.classList.remove('d-none');
+            bloqueJunta.classList.add('d-none');
+            if (campoRutSolicitante) campoRutSolicitante.classList.remove('d-none');
+            if (selectJunta) selectJunta.value = '';
+        }
+    }
+
+    if (selectTipoSolicitante) {
+        selectTipoSolicitante.addEventListener('change', actualizarModoSolicitante);
+        actualizarModoSolicitante();
+    }
+
+    if (selectJunta) {
+        selectJunta.addEventListener('change', function() {
+            const junta = juntasLista.find(j => String(j.id) === String(this.value));
+            if (junta) {
+                if (inputNombre) inputNombre.value = junta.nombre;
+                if (inputRut) inputRut.value = '';
+                if (selectTerritorioMain && junta.territorio_id) {
+                    selectTerritorioMain.value = String(junta.territorio_id);
+                }
+            }
+        });
+    }
 
     function normalizarRut(str) {
         return (str || '').toUpperCase().replace(/[^0-9K]/g, '');
@@ -323,9 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let filtrados = vecinosLista;
 
         if (qNorm.length > 0) {
-            // Primero filtra estrictamente por RUT que empiecen con lo escrito
             filtrados = vecinosLista.filter(v => normalizarRut(v.rut).startsWith(qNorm));
-            // Si ninguno empieza igual, busca coincidencias contenidas en el RUT
             if (filtrados.length === 0) {
                 filtrados = vecinosLista.filter(v => normalizarRut(v.rut).includes(qNorm));
             }
@@ -362,6 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="text-muted" style="font-size: 0.74rem;">${v.telefono || ''}</span>
                     </div>
                     <div class="text-dark">${v.nombre}</div>
+                    ${v.direccion ? `<div class="text-muted" style="font-size: 0.72rem;"><i class="bi bi-geo-alt me-1"></i>${v.direccion}</div>` : ''}
                 `;
                 item.addEventListener('click', () => seleccionarVecino(v));
                 listaDropdown.appendChild(item);
@@ -405,7 +509,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Si el formulario recargó con un vecino ya elegido, reflejarlo en la caja
     if (selectVecinoReal.value) {
         const actual = vecinosLista.find(v => String(v.id) === String(selectVecinoReal.value));
         if (actual) {
@@ -414,7 +517,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Sincronizar territorio y limpiar alertas al abrir el modal
     modalEl.addEventListener('show.bs.modal', function() {
         alertaError.classList.add('d-none');
         alertaError.textContent = '';
@@ -423,7 +525,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Guardar nuevo vecino por AJAX sin perder el formulario
     formRapido.addEventListener('submit', async function(e) {
         e.preventDefault();
         alertaError.classList.add('d-none');
@@ -433,6 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('nombre_completo', modalNombre.value.trim());
         formData.append('rut', modalRut.value.trim());
         formData.append('telefono', modalTelefono.value.trim());
+        formData.append('direccion', modalDireccion.value.trim());
         formData.append('territorio_id', modalTerritorio.value);
 
         const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
